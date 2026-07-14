@@ -1,0 +1,87 @@
+# ── Local project docs / design (keep local, do not push) ──
+CONTEXT.md
+dugsi-erp-weekly-plan.md
+design-reference/
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ── Editors / IDEs ──
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ── Environment & secrets ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+auth.json
+credentials.json
+secrets/
+
+# ── Laravel ──
+/vendor/
+/node_modules/
+/public/build/
+/public/hot
+/public/storage
+/storage/*.key
+/storage/app/*
+!/storage/app/.gitignore
+/storage/app/public/*
+!/storage/app/public/.gitignore
+/storage/framework/cache/*
+!/storage/framework/cache/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/testing/*
+!/storage/framework/testing/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+/storage/logs/*
+!/storage/logs/.gitignore
+/bootstrap/cache/*
+!/bootstrap/cache/.gitignore
+.phpunit.result.cache
+.phpunit.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# ── Frontend build artifacts ──
+dist/
+build/
+.vite/
+*.local
+
+# ── Logs & temp ──
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# ── Database dumps / backups ──
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+/backups/
+
+# ── Uploads / media (keep structure via app code, not local files) ──
+/public/uploads/
+/storage/uploads/
