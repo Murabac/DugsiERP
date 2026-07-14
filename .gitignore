@@ -3,6 +3,10 @@ CONTEXT.md
 dugsi-erp-weekly-plan.md
 design-reference/
 
+# ── Local tooling ──
+composer.phar
+_laravel_tmp/
+
 # ── OS ──
 .DS_Store
 Thumbs.db
@@ -12,17 +16,24 @@ ehthumbs.db
 # ── Editors / IDEs ──
 .idea/
 .vscode/
+.zed/
+.nova/
+.cursor/
 *.swp
 *.swo
 *~
 .project
 .classpath
 .settings/
+.phpactor.json
+_ide_helper.php
 
 # ── Environment & secrets ──
 .env
 .env.*
 !.env.example
+.env.backup
+.env.production
 *.pem
 *.key
 auth.json
@@ -33,9 +44,11 @@ secrets/
 /vendor/
 /node_modules/
 /public/build/
+/public/fonts-manifest.dev.json
 /public/hot
 /public/storage
 /storage/*.key
+/storage/pail
 /storage/app/*
 !/storage/app/.gitignore
 /storage/app/public/*
@@ -82,6 +95,6 @@ temp/
 *.db
 /backups/
 
-# ── Uploads / media (keep structure via app code, not local files) ──
+# ── Uploads / media ──
 /public/uploads/
 /storage/uploads/

@@ -1,0 +1,128 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+/*
+ | Dugsi ERP design tokens — match /design-reference/src/styles/theme.css
+ | Primary: #1e3a6e | Sidebar: #0f2744 | Page bg: #f1f5f9
+ */
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    --color-dugsi-primary: #1e3a6e;
+    --color-dugsi-primary-foreground: #ffffff;
+    --color-dugsi-sidebar: #0f2744;
+    --color-dugsi-sidebar-foreground: #cbd5e1;
+    --color-dugsi-sidebar-active: #3b82f6;
+    --color-dugsi-success: #16a34a;
+    --color-dugsi-warning: #d97706;
+    --color-dugsi-danger: #dc2626;
+    --color-dugsi-page: #f1f5f9;
+    --color-dugsi-card: #ffffff;
+    --color-dugsi-border: rgb(15 23 42 / 0.12);
+}
+
+@layer base {
+    details > summary {
+        list-style: none;
+    }
+
+    details > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    /* Center native <dialog> modals (default is top-left without margin:auto) */
+    dialog {
+        margin: auto;
+        max-height: calc(100vh - 2rem);
+    }
+
+    dialog::backdrop {
+        background: rgb(0 0 0 / 0.4);
+    }
+}
+
+@layer components {
+    /* Timetable drag & drop */
+    .tt-grid.is-dragging .tt-slot:not(.is-dragging) {
+        opacity: 0.55;
+        transition: opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+    }
+
+    .tt-slot {
+        transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease, outline-color 150ms ease;
+    }
+
+    .tt-slot.is-draggable:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgb(15 23 42 / 0.12);
+    }
+
+    .tt-slot.is-dragging {
+        opacity: 0.35;
+        transform: scale(0.96);
+        box-shadow: none;
+        outline: 2px dashed rgb(30 58 110 / 0.45);
+        outline-offset: 2px;
+    }
+
+    .tt-slot.is-draggable .tt-drag-hint {
+        opacity: 0;
+        transition: opacity 150ms ease;
+    }
+
+    .tt-slot.is-draggable:hover .tt-drag-hint {
+        opacity: 1;
+    }
+
+    .tt-drop-cell {
+        border-radius: 0.5rem;
+        transition: background-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .tt-drop-cell.is-drop-target {
+        background: rgb(30 58 110 / 0.06);
+        box-shadow: inset 0 0 0 2px #1e3a6e;
+    }
+
+    .tt-drop-cell.is-drop-target .tt-slot:not(.is-dragging) {
+        opacity: 1;
+        transform: scale(1.02);
+        box-shadow: 0 0 0 2px #1e3a6e, 0 8px 18px rgb(30 58 110 / 0.18);
+    }
+
+    .tt-empty {
+        transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease, transform 120ms ease;
+    }
+
+    .tt-empty.is-drop-target {
+        border-color: #1e3a6e !important;
+        background: rgb(239 246 255);
+        color: #1e3a6e;
+        transform: scale(1.02);
+        animation: tt-drop-pulse 1s ease-in-out infinite;
+    }
+
+    .tt-drag-ghost {
+        position: fixed;
+        top: -9999px;
+        left: -9999px;
+        z-index: 9999;
+        width: 140px;
+        pointer-events: none;
+        border-radius: 0.5rem;
+        border: 1px solid rgb(15 23 42 / 0.12);
+        box-shadow: 0 12px 28px rgb(15 23 42 / 0.22);
+        transform: rotate(2deg);
+        opacity: 0.95;
+    }
+
+    @keyframes tt-drop-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgb(30 58 110 / 0.25); }
+        50% { box-shadow: 0 0 0 6px rgb(30 58 110 / 0); }
+    }
+}
