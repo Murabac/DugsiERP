@@ -13,21 +13,24 @@
 @endphp
 
 <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h2 class="text-base font-semibold text-slate-900">Classes</h2>
             <p class="mt-0.5 text-xs text-slate-500">{{ $academicYear }} · {{ $classes->count() }} classes · {{ $totalStudents }} students enrolled</p>
         </div>
-        @if ($canManage)
-            <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ route('students.by-parent') }}" class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <x-icon name="users" :size="14" /> Find by Parent
+            </a>
+            @if ($canManage)
                 <a href="{{ route('classes.manage') }}" class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                     <x-icon name="settings" :size="14" /> Manage Classes
                 </a>
                 <a href="{{ route('students.create') }}" class="inline-flex items-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
                     + Add Student
                 </a>
-            </div>
-        @endif
+            @endif
+        </div>
     </div>
 
     @if ($classes->isEmpty())
@@ -39,7 +42,7 @@
             @endif
         </div>
     @else
-        <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             @foreach ($classes as $class)
                 @php
                     $enrolled = $class->enrolled_count ?? 0;

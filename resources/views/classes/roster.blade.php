@@ -10,7 +10,7 @@
         ['label' => 'Student Roster'],
     ]" />
 
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h2 class="text-base font-semibold text-slate-900">{{ $schoolClass->displayName() }} — Student Roster</h2>
             <p class="mt-0.5 text-xs text-slate-500">
@@ -23,7 +23,7 @@
         </div>
         @if ($canAdd)
             <a href="{{ route('students.create', ['class' => $schoolClass->id]) }}"
-                class="inline-flex items-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
+                class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56] sm:w-auto">
                 + Add Student
             </a>
         @endif
@@ -39,7 +39,8 @@
                     </p>
                 </div>
             </div>
-            <table class="w-full text-sm">
+            <div class="overflow-x-auto">
+            <table class="w-full min-w-[520px] text-sm">
                 <thead>
                     <tr class="border-b border-amber-100 bg-amber-50">
                         @foreach (['#', 'Name', 'Guardian', 'Added', ''] as $h)
@@ -78,18 +79,19 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         </div>
     @endif
 
     <div class="rounded-lg border border-slate-200 bg-white">
-        <form method="GET" class="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
-            <div class="relative min-w-48 flex-1">
+        <form method="GET" class="flex flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-4">
+            <div class="relative w-full min-w-0 flex-1 sm:min-w-48">
                 <span class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400">⌕</span>
                 <input type="search" name="q" value="{{ $search }}"
                     placeholder="Search name or ID within this class…"
                     class="w-full rounded-md border border-slate-300 py-1.5 pr-3 pl-8 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
             </div>
-            <select name="status" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+            <select name="status" class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary sm:w-auto">
                 <option value="">All Status</option>
                 <option value="active" @selected($statusFilter === 'active')>Active</option>
                 <option value="waitlisted" @selected($statusFilter === 'waitlisted')>Waitlisted</option>
@@ -97,10 +99,11 @@
                 <option value="graduated" @selected($statusFilter === 'graduated')>Graduated</option>
                 <option value="suspended" @selected($statusFilter === 'suspended')>Suspended</option>
             </select>
-            <button type="submit" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Filter</button>
+            <button type="submit" class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 sm:w-auto">Filter</button>
         </form>
 
-        <table class="w-full text-sm">
+        <div class="overflow-x-auto">
+        <table class="w-full min-w-[640px] text-sm">
             <thead>
                 <tr class="border-b border-slate-200 bg-slate-50">
                     @foreach (['Roll', 'Name', 'Gender', 'City', 'Guardian', 'Status', ''] as $h)
@@ -145,6 +148,7 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
         <div class="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
             Showing {{ $enrollments->count() }} students in {{ $schoolClass->displayName() }}
         </div>

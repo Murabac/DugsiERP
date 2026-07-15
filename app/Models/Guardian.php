@@ -37,4 +37,15 @@ class Guardian extends Model
 
         return mb_strtoupper($first.($last !== $first ? $last : ''));
     }
+
+    /** Digits-only phone for sibling matching across guardian rows. */
+    public static function normalizePhone(?string $phone): string
+    {
+        return preg_replace('/\D+/', '', (string) $phone) ?: '';
+    }
+
+    public function normalizedPhone(): string
+    {
+        return self::normalizePhone($this->phone);
+    }
 }

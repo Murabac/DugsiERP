@@ -4,41 +4,42 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h2 class="text-base font-semibold text-slate-900">Staff</h2>
             <p class="mt-0.5 text-xs text-slate-500">{{ $staff->count() }} staff members</p>
         </div>
-        <button type="button" onclick="document.getElementById('add-staff-modal').showModal()"
-            class="inline-flex items-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
+        <button type="button" data-dugsi-open="#add-staff-modal" data-dugsi-width="32rem"
+            class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56] sm:w-auto">
             + Add Staff
         </button>
     </div>
 
     <div class="rounded-lg border border-slate-200 bg-white">
-        <form method="GET" class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3">
-            <div class="relative min-w-48 flex-1">
+        <form method="GET" class="flex flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-4">
+            <div class="relative w-full min-w-0 flex-1 sm:min-w-48">
                 <span class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400">⌕</span>
                 <input type="search" name="q" value="{{ $search }}"
                     placeholder="Search name, ID, or phone…"
                     class="w-full rounded-md border border-slate-300 py-1.5 pr-3 pl-8 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
             </div>
-            <select name="role" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm">
+            <select name="role" class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm sm:w-auto">
                 <option value="">All roles</option>
                 @foreach ($roleLabels as $rl)
                     <option value="{{ $rl->value }}" @selected($roleFilter === $rl->value)>{{ $rl->label() }}</option>
                 @endforeach
             </select>
-            <select name="status" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm">
+            <select name="status" class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm sm:w-auto">
                 <option value="">All status</option>
                 @foreach ($statuses as $st)
                     <option value="{{ $st->value }}" @selected($statusFilter === $st->value)>{{ $st->label() }}</option>
                 @endforeach
             </select>
-            <button type="submit" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Filter</button>
+            <button type="submit" class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 sm:w-auto">Filter</button>
         </form>
 
-        <table class="w-full text-sm">
+        <div class="overflow-x-auto">
+        <table class="w-full min-w-[640px] text-sm">
             <thead>
                 <tr class="border-b border-slate-200 bg-slate-50">
                     @foreach (['ID', 'Name', 'Role', 'Subject / Dept', 'Joined', 'Status', ''] as $h)
@@ -73,15 +74,16 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 
-<dialog id="add-staff-modal" class="m-auto w-full max-w-lg rounded-xl border border-slate-200 p-0 shadow-xl">
+<div id="add-staff-modal" class="hidden" data-dugsi-width="32rem">
     <form method="POST" action="{{ route('staff.store') }}" class="p-5">
         @csrf
         <h3 class="mb-4 text-sm font-semibold text-slate-900">Add Staff Member</h3>
         <div class="space-y-3">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div class="col-span-2">
                     <label class="mb-1 block text-xs font-medium text-slate-700">Full Name <span class="text-red-500">*</span></label>
                     <input name="full_name" value="{{ old('full_name') }}" required placeholder="e.g. Axmed Maxamed Farah"
@@ -158,7 +160,7 @@
                     <input type="checkbox" name="create_login" value="1" id="create-login" @checked(old('create_login')) class="rounded border-slate-300">
                     Create login account for this staff member
                 </label>
-                <div id="login-fields" class="mt-3 grid grid-cols-2 gap-3 {{ old('create_login') ? '' : 'hidden' }}">
+                <div id="login-fields" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 {{ old('create_login') ? '' : 'hidden' }}">
                     <div class="col-span-2">
                         <label class="mb-1 block text-xs font-medium text-slate-700">Login email</label>
                         <input type="email" name="login_email" value="{{ old('login_email') }}" placeholder="user@dugsi.edu.sl"
@@ -175,14 +177,14 @@
             </div>
         </div>
         <div class="mt-5 flex justify-end gap-2">
-            <button type="button" onclick="this.closest('dialog').close()" class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700">Cancel</button>
+            <button type="button" data-dugsi-close class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700">Cancel</button>
             <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white">Save Staff</button>
         </div>
     </form>
-</dialog>
+</div>
 
 @if ($errors->any())
-    <script>document.getElementById('add-staff-modal')?.showModal();</script>
+    <script>document.addEventListener('DOMContentLoaded', () => window.DugsiUI?.openModal('#add-staff-modal'));</script>
 @endif
 
 <script>

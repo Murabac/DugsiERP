@@ -89,8 +89,8 @@ Local-only (gitignored): `CONTEXT.md`, `dugsi-erp-weekly-plan.md`, `design-refer
 
 ## Status
 
-**Week 4 complete** — Timetable builder (Sat–Wed), conflict checks, teacher read-only view, print.  
-Next: **Week 5 — Attendance**.
+**Week 5 complete** — Attendance marking, history, print register, absence SMS stub (logged for Week 9).  
+Next: **Week 7 — Fees & Finance**.
 
 ### Demo logins (password: `password`)
 

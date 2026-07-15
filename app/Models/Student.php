@@ -64,6 +64,11 @@ class Student extends Model
         return $this->hasOne(Enrollment::class)->latestOfMany();
     }
 
+    public function attendanceRecords(): HasMany
+    {
+        return $this->hasMany(AttendanceRecord::class);
+    }
+
     public function initials(): string
     {
         $parts = preg_split('/\s+/', trim($this->full_name)) ?: [];

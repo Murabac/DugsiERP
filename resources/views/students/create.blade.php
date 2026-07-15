@@ -20,10 +20,10 @@
         <p class="mt-0.5 text-xs text-slate-500">Step <span id="step-num">1</span> of 3</p>
     </div>
 
-    <div class="flex gap-1.5" id="step-pills">
+    <div class="flex flex-wrap gap-1.5" id="step-pills">
         @foreach ($steps as $i => $label)
-            <div data-pill="{{ $i + 1 }}" class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors {{ $i === 0 ? 'bg-dugsi-primary text-white' : 'bg-slate-100 text-slate-500' }}">
-                <span>{{ $i + 1 }}</span>{{ $label }}
+            <div data-pill="{{ $i + 1 }}" class="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors sm:px-3 sm:text-xs {{ $i === 0 ? 'bg-dugsi-primary text-white' : 'bg-slate-100 text-slate-500' }}">
+                <span>{{ $i + 1 }}</span><span class="sm:inline">{{ $label }}</span>
             </div>
         @endforeach
     </div>
@@ -32,11 +32,11 @@
         @csrf
         <input type="hidden" name="step" id="step-input" value="1">
 
-        <div class="rounded-lg border border-slate-200 bg-white p-5">
+        <div class="rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
             {{-- Step 1 --}}
             <div data-step-panel="1" class="space-y-3">
                 <h3 class="border-b border-slate-100 pb-2 text-xs font-semibold tracking-wider text-slate-700 uppercase">Personal Information</h3>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div class="col-span-2">
                         <label class="mb-1 block text-xs font-medium text-slate-700">Full Name <span class="text-red-500">*</span></label>
                         <input name="full_name" value="{{ old('full_name') }}" required placeholder="e.g. Faadumo Xasan Warsame"
@@ -98,7 +98,7 @@
                 <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
                     Class assignment is required before a student can be registered.
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div class="col-span-2">
                         <label class="mb-1 block text-xs font-medium text-slate-700">Class / Section <span class="text-red-500">*</span></label>
                         <select name="class_id" required class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
@@ -143,7 +143,7 @@
             {{-- Step 3 --}}
             <div data-step-panel="3" class="hidden space-y-3">
                 <h3 class="border-b border-slate-100 pb-2 text-xs font-semibold tracking-wider text-slate-700 uppercase">Guardian / Parent Information</h3>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div class="col-span-2">
                         <label class="mb-1 block text-xs font-medium text-slate-700">Guardian Full Name <span class="text-red-500">*</span></label>
                         <input name="guardian_name" value="{{ old('guardian_name') }}" required placeholder="e.g. Xasan Warsame Jama"
@@ -171,7 +171,7 @@
             </div>
         </div>
 
-        <div class="mt-4 flex items-center justify-between">
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
             <button type="button" id="btn-back" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
             <button type="button" id="btn-next" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">Next →</button>
             <button type="submit" id="btn-save" class="hidden rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">Save Student</button>

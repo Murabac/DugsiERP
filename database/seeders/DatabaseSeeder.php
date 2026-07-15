@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enums\AcademicTerm;
+use App\Enums\AttendanceStatus;
 use App\Enums\ClassStatus;
 use App\Enums\Gender;
 use App\Enums\GuardianRelationship;
@@ -9,7 +11,10 @@ use App\Enums\StaffRoleLabel;
 use App\Enums\StaffStatus;
 use App\Enums\StudentStatus;
 use App\Enums\UserRole;
+use App\Models\AttendanceRecord;
 use App\Models\Enrollment;
+use App\Models\Grade;
+use App\Models\GradeBoundary;
 use App\Models\Guardian;
 use App\Models\SchoolClass;
 use App\Models\Staff;
@@ -18,8 +23,10 @@ use App\Models\Subject;
 use App\Models\TeacherSubjectAssignment;
 use App\Models\User;
 use App\Support\AcademicYear;
+use App\Support\GradeScale;
 use App\Support\SchoolWeek;
 use App\Support\Subjects;
+use Carbon\Carbon;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -33,6 +40,8 @@ class DatabaseSeeder extends Seeder
         $this->seedStaffAndUsers();
         $this->seedSubjectsAndAssignments();
         $this->seedClassesAndStudents();
+        $this->seedAttendance();
+        $this->seedGrades();
     }
 
     private function seedStaffAndUsers(): void
@@ -225,6 +234,20 @@ class DatabaseSeeder extends Seeder
             );
         }
 
+        // Demo headmaster: Math teacher (teacher@dugsi.edu.sl) for Form 1-A.
+        $mathTeacher = Staff::query()
+            ->whereIn('employee_code', ['EMP-001', 'EMP-101'])
+            ->where('role_label', StaffRoleLabel::Teacher)
+            ->orderBy('employee_code')
+            ->first();
+        if ($mathTeacher) {
+            SchoolClass::query()
+                ->where('form_level', 1)
+                ->where('section', 'A')
+                ->where('academic_year', $year)
+                ->update(['homeroom_teacher_id' => $mathTeacher->id]);
+        }
+
         // Design-reference STUDENTS (+ a few extras so every class has roster data).
         $samples = [
             ['STU-001', 'Faadumo Xasan Warsame', Gender::Female, '2010-03-15', 'Hargeisa', '1-A', 'Xasan Warsame Jama', GuardianRelationship::Father, StudentStatus::Active],
@@ -339,6 +362,168 @@ class DatabaseSeeder extends Seeder
                     'enrollment_date' => now()->toDateString(),
                     'status' => $status,
                 ]);
+            }
+        }
+    }
+
+    /**
+     * Sample attendance for the last ~2 weeks of school days (Sat–Wed).
+     */
+    private function seedAttendance(): void
+    {
+        $markerId = User::query()->where('email', 'admin@dugsi.edu.sl')->value('id')
+            ?? User::query()->where('email', 'teacher@dugsi.edu.sl')->value('id');
+
+        if (! $markerId) {
+            return;
+        }
+
+        $enrollments = Enrollment::query()
+            ->where('status', StudentStatus::Active)
+            ->where('academic_year', AcademicYear::current())
+            ->get(['student_id', 'class_id']);
+
+        if ($enrollments->isEmpty()) {
+            return;
+        }
+
+        $schoolDays = [];
+        $cursor = Carbon::parse('2026-07-15')->startOfDay(); // Wed
+        while (count($schoolDays) < 10) {
+            if (SchoolWeek::dayKey($cursor) !== null) {
+                $schoolDays[] = $cursor->toDateString();
+            }
+            $cursor->subDay();
+        }
+
+        foreach ($schoolDays as $date) {
+            foreach ($enrollments as $enrollment) {
+                [$status, $reason] = $this->sampleAttendanceStatus(
+                    (int) $enrollment->student_id,
+                    $date
+                );
+
+                $record = AttendanceRecord::query()
+                    ->where('student_id', $enrollment->student_id)
+                    ->where('class_id', $enrollment->class_id)
+                    ->whereDate('date', $date)
+                    ->first();
+
+                $attrs = [
+                    'status' => $status,
+                    'reason' => $reason,
+                    'marked_by' => $markerId,
+                ];
+
+                if ($record) {
+                    $record->update($attrs);
+                } else {
+                    AttendanceRecord::query()->create([
+                        'student_id' => $enrollment->student_id,
+                        'class_id' => $enrollment->class_id,
+                        'date' => $date,
+                        ...$attrs,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * Deterministic mix so demos look realistic without random flicker on re-seed.
+     *
+     * @return array{0: AttendanceStatus, 1: ?string}
+     */
+    private function sampleAttendanceStatus(int $studentId, string $date): array
+    {
+        $bucket = ($studentId + (int) str_replace('-', '', $date)) % 20;
+
+        return match (true) {
+            $bucket === 0 => [AttendanceStatus::Absent, 'Sick'],
+            $bucket === 1 => [AttendanceStatus::Absent, 'Family matter'],
+            $bucket === 2 => [AttendanceStatus::Late, 'Traffic'],
+            $bucket === 3 => [AttendanceStatus::Late, null],
+            $bucket === 4 && $studentId % 7 === 0 => [AttendanceStatus::Suspended, 'Disciplinary'],
+            default => [AttendanceStatus::Present, null],
+        };
+    }
+
+    /**
+     * Default A–F boundaries + Term 2 sample scores for demo classes.
+     */
+    private function seedGrades(): void
+    {
+        GradeBoundary::seedDefaults();
+
+        $enteredBy = User::query()->where('email', 'admin@dugsi.edu.sl')->value('id')
+            ?? User::query()->where('email', 'teacher@dugsi.edu.sl')->value('id');
+
+        if (! $enteredBy) {
+            return;
+        }
+
+        $year = AcademicYear::current();
+        $term = AcademicTerm::Term2;
+        $subjects = Subject::query()->orderBy('sort_order')->get();
+
+        if ($subjects->isEmpty()) {
+            return;
+        }
+
+        // Seed Form 1-A and Form 2-A so grade entry + report have data on first open.
+        $classes = SchoolClass::query()
+            ->where('academic_year', $year)
+            ->where('status', ClassStatus::Active)
+            ->where(function ($q) {
+                $q->where(fn ($q2) => $q2->where('form_level', 1)->where('section', 'A'))
+                    ->orWhere(fn ($q2) => $q2->where('form_level', 2)->where('section', 'A'));
+            })
+            ->get();
+
+        foreach ($classes as $class) {
+            $enrollments = Enrollment::query()
+                ->where('class_id', $class->id)
+                ->where('academic_year', $year)
+                ->where('status', StudentStatus::Active)
+                ->get(['student_id']);
+
+            foreach ($enrollments as $enrollment) {
+                foreach ($subjects as $subject) {
+                    $score = 45 + (($enrollment->student_id * 7 + $subject->id * 11 + $class->id * 3) % 51);
+                    $letter = GradeScale::letterFor((float) $score);
+                    if ($letter === null) {
+                        continue;
+                    }
+
+                    $existing = Grade::query()
+                        ->where('student_id', $enrollment->student_id)
+                        ->where('class_id', $class->id)
+                        ->where('subject_id', $subject->id)
+                        ->where('term', $term)
+                        ->where('academic_year', $year)
+                        ->first();
+
+                    $attrs = [
+                        'score_percent' => $score,
+                        'letter_grade' => $letter,
+                        'remarks' => $score >= 85 ? 'Excellent work' : ($score < 40 ? 'Needs support' : null),
+                        'entered_by' => $enteredBy,
+                    ];
+
+                    if ($existing) {
+                        $existing->update($attrs);
+                    } else {
+                        Grade::query()->create([
+                            'student_id' => $enrollment->student_id,
+                            'class_id' => $class->id,
+                            'subject_id' => $subject->id,
+                            'term' => $term,
+                            'academic_year' => $year,
+                            'first_entered_at' => now()->subDays(2),
+                            ...$attrs,
+                        ]);
+                    }
+                }
             }
         }
     }

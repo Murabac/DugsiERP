@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Timetable Print — Dugsi ERP</title>
+    <title>Timetable — {{ $schoolName }}</title>
     @vite(['resources/css/app.css'])
     <style>
         @media print {
@@ -20,7 +20,7 @@
 
     <div class="mx-auto max-w-5xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div class="mb-6 border-b border-slate-200 pb-4 text-center">
-            <h1 class="text-xl font-bold text-slate-900">Dugsi ERP School — Class Timetable</h1>
+            <h1 class="text-xl font-bold text-slate-900">{{ $schoolName }} — Class Timetable</h1>
             <p class="mt-1 text-sm text-slate-600">
                 @if ($mode === 'class')
                     {{ $schoolClass->displayName() }} · Academic Year {{ $academicYear }}

@@ -5,15 +5,22 @@ namespace Tests\Feature;
 use App\Enums\ClassStatus;
 use App\Enums\Gender;
 use App\Enums\GuardianRelationship;
+use App\Enums\StaffRoleLabel;
+use App\Enums\StaffStatus;
 use App\Enums\StudentStatus;
 use App\Enums\UserRole;
 use App\Enums\WaitlistStatus;
 use App\Models\ClassWaitlist;
 use App\Models\Enrollment;
+use App\Models\Guardian;
 use App\Models\SchoolClass;
+use App\Models\Staff;
 use App\Models\Student;
+use App\Models\Subject;
+use App\Models\TimetableSlot;
 use App\Models\User;
 use App\Support\AcademicYear;
+use App\Support\SchoolWeek;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -31,6 +38,7 @@ class ClassStudentTest extends TestCase
                 'section' => 'A',
                 'academic_year' => '2024-25',
                 'capacity' => 30,
+                'room' => 'R-1A',
             ])
             ->assertRedirect(route('classes.manage'));
 
@@ -39,6 +47,7 @@ class ClassStudentTest extends TestCase
             'section' => 'A',
             'academic_year' => '2024-25',
             'status' => ClassStatus::Active->value,
+            'room' => 'R-1A',
         ]);
     }
 
@@ -333,5 +342,299 @@ class ClassStudentTest extends TestCase
         $this->actingAs($finance)
             ->get(route('classes.index'))
             ->assertForbidden();
+    }
+
+    public function test_teacher_can_only_view_taught_class_roster_and_students(): void
+    {
+        $year = AcademicYear::current();
+        $staff = Staff::query()->create([
+            'employee_code' => 'EMP-T40',
+            'full_name' => 'Scoped Teacher',
+            'role_label' => StaffRoleLabel::Teacher,
+            'status' => StaffStatus::Active,
+        ]);
+        $teacher = User::factory()->role(UserRole::Teacher)->create([
+            'staff_id' => $staff->id,
+        ]);
+
+        $taught = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'A',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-1A',
+            'status' => ClassStatus::Active,
+        ]);
+        $other = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'B',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-1B',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $subject = Subject::query()->create(['name' => 'English', 'sort_order' => 1]);
+        $period = SchoolWeek::period(1);
+        TimetableSlot::query()->create([
+            'class_id' => $taught->id,
+            'academic_year' => $year,
+            'day_of_week' => 'sat',
+            'period_number' => 1,
+            'start_time' => $period['start'],
+            'end_time' => $period['end'],
+            'subject_id' => $subject->id,
+            'teacher_id' => $staff->id,
+            'room' => 'R-1A',
+        ]);
+
+        $mine = Student::query()->create([
+            'student_code' => 'STU-T1',
+            'full_name' => 'My Student',
+            'dob' => '2010-01-01',
+            'gender' => Gender::Female,
+            'status' => StudentStatus::Active,
+        ]);
+        $theirs = Student::query()->create([
+            'student_code' => 'STU-T2',
+            'full_name' => 'Other Student',
+            'dob' => '2010-01-01',
+            'gender' => Gender::Male,
+            'status' => StudentStatus::Active,
+        ]);
+
+        Enrollment::query()->create([
+            'student_id' => $mine->id,
+            'class_id' => $taught->id,
+            'academic_year' => $year,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+            'roll_number' => 1,
+        ]);
+        Enrollment::query()->create([
+            'student_id' => $theirs->id,
+            'class_id' => $other->id,
+            'academic_year' => $year,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+            'roll_number' => 1,
+        ]);
+
+        $this->actingAs($teacher)
+            ->get(route('classes.index'))
+            ->assertOk()
+            ->assertSee('Form 1 - A')
+            ->assertDontSee('Form 1 - B');
+
+        $this->actingAs($teacher)
+            ->get(route('classes.roster', $taught))
+            ->assertOk()
+            ->assertSee('My Student');
+
+        $this->actingAs($teacher)
+            ->get(route('classes.roster', $other))
+            ->assertForbidden();
+
+        $this->actingAs($teacher)
+            ->get(route('students.show', $mine))
+            ->assertOk()
+            ->assertSee('My Student');
+
+        $this->actingAs($teacher)
+            ->get(route('students.show', $theirs))
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_find_students_by_parent_across_classes(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $year = AcademicYear::current();
+        $phone = '+252 63 400 9999';
+
+        $classA = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'A',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-1A',
+            'status' => ClassStatus::Active,
+        ]);
+        $classB = SchoolClass::query()->create([
+            'form_level' => 2,
+            'section' => 'B',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-2B',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $childA = Student::query()->create([
+            'student_code' => 'STU-P1',
+            'full_name' => 'Sibling One',
+            'dob' => '2010-01-01',
+            'gender' => Gender::Female,
+            'status' => StudentStatus::Active,
+        ]);
+        $childB = Student::query()->create([
+            'student_code' => 'STU-P2',
+            'full_name' => 'Sibling Two',
+            'dob' => '2009-01-01',
+            'gender' => Gender::Male,
+            'status' => StudentStatus::Active,
+        ]);
+
+        Guardian::query()->create([
+            'student_id' => $childA->id,
+            'full_name' => 'Shared Parent Warsame',
+            'phone' => $phone,
+            'relationship' => GuardianRelationship::Father,
+            'is_primary' => true,
+        ]);
+        Guardian::query()->create([
+            'student_id' => $childB->id,
+            'full_name' => 'Shared Parent Warsame',
+            'phone' => '+252634009999', // same digits, different formatting
+            'relationship' => GuardianRelationship::Father,
+            'is_primary' => true,
+        ]);
+
+        Enrollment::query()->create([
+            'student_id' => $childA->id,
+            'class_id' => $classA->id,
+            'academic_year' => $year,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+            'roll_number' => 1,
+        ]);
+        Enrollment::query()->create([
+            'student_id' => $childB->id,
+            'class_id' => $classB->id,
+            'academic_year' => $year,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+            'roll_number' => 1,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('students.by-parent', ['q' => 'Shared Parent']))
+            ->assertOk()
+            ->assertSee('Sibling One')
+            ->assertSee('Sibling Two')
+            ->assertSee('Form 1 - A')
+            ->assertSee('Form 2 - B');
+
+        $this->actingAs($admin)
+            ->get(route('students.by-parent', ['q' => '4009999']))
+            ->assertOk()
+            ->assertSee('Sibling One')
+            ->assertSee('Sibling Two');
+
+        // LIKE metacharacters are treated as literals, not wildcards.
+        $this->actingAs($admin)
+            ->get(route('students.by-parent', ['q' => '%']))
+            ->assertOk()
+            ->assertDontSee('Sibling One');
+
+        $this->actingAs($admin)
+            ->get(route('students.by-parent', ['q' => 'a']))
+            ->assertOk()
+            ->assertSee('Enter at least 2 characters');
+    }
+
+    public function test_teacher_parent_search_only_shows_taught_students(): void
+    {
+        $year = AcademicYear::current();
+        $phone = '+252634008888';
+
+        $classA = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'A',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-1A',
+            'status' => ClassStatus::Active,
+        ]);
+        $classB = SchoolClass::query()->create([
+            'form_level' => 2,
+            'section' => 'B',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-2B',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $taught = Student::query()->create([
+            'student_code' => 'STU-T1',
+            'full_name' => 'Taught Child',
+            'dob' => '2010-01-01',
+            'gender' => Gender::Female,
+            'status' => StudentStatus::Active,
+        ]);
+        $other = Student::query()->create([
+            'student_code' => 'STU-T2',
+            'full_name' => 'Other Child',
+            'dob' => '2009-01-01',
+            'gender' => Gender::Male,
+            'status' => StudentStatus::Active,
+        ]);
+
+        Guardian::query()->create([
+            'student_id' => $taught->id,
+            'full_name' => 'Scoped Parent',
+            'phone' => $phone,
+            'relationship' => GuardianRelationship::Father,
+            'is_primary' => true,
+        ]);
+        Guardian::query()->create([
+            'student_id' => $other->id,
+            'full_name' => 'Scoped Parent',
+            'phone' => $phone,
+            'relationship' => GuardianRelationship::Father,
+            'is_primary' => true,
+        ]);
+
+        Enrollment::query()->create([
+            'student_id' => $taught->id,
+            'class_id' => $classA->id,
+            'academic_year' => $year,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+            'roll_number' => 1,
+        ]);
+        Enrollment::query()->create([
+            'student_id' => $other->id,
+            'class_id' => $classB->id,
+            'academic_year' => $year,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+            'roll_number' => 1,
+        ]);
+
+        $staff = Staff::query()->create([
+            'employee_code' => 'EMP-PS',
+            'full_name' => 'Parent Search Teacher',
+            'role_label' => StaffRoleLabel::Teacher,
+            'status' => StaffStatus::Active,
+        ]);
+        $teacher = User::factory()->role(UserRole::Teacher)->create(['staff_id' => $staff->id]);
+        $subject = Subject::query()->create(['name' => 'English', 'sort_order' => 1]);
+        $period = SchoolWeek::period(1);
+        TimetableSlot::query()->create([
+            'class_id' => $classA->id,
+            'academic_year' => $year,
+            'day_of_week' => 'sat',
+            'period_number' => 1,
+            'start_time' => $period['start'],
+            'end_time' => $period['end'],
+            'subject_id' => $subject->id,
+            'teacher_id' => $staff->id,
+            'room' => 'R-1A',
+        ]);
+
+        $this->actingAs($teacher)
+            ->get(route('students.by-parent', ['q' => 'Scoped Parent']))
+            ->assertOk()
+            ->assertSee('Taught Child')
+            ->assertDontSee('Other Child');
     }
 }

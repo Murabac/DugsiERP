@@ -5,8 +5,9 @@
     $navItems = Navigation::for($user->role);
 @endphp
 
-<aside class="flex h-full w-52 flex-shrink-0 flex-col overflow-hidden bg-dugsi-sidebar">
-    <div class="border-b border-white/10 px-4 py-4">
+<aside id="app-sidebar"
+    class="fixed inset-y-0 left-0 z-50 flex h-full w-64 -translate-x-full flex-col overflow-hidden bg-dugsi-sidebar transition-transform duration-200 lg:static lg:z-auto lg:w-52 lg:translate-x-0 lg:flex-shrink-0">
+    <div class="flex items-center justify-between border-b border-white/10 px-4 py-4">
         <div class="flex items-center gap-2.5">
             <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500">
                 <x-icon name="graduation-cap" :size="16" class="text-white" />
@@ -16,6 +17,9 @@
                 <div class="text-[11px] text-blue-300/80">{{ $user->role->label() }}</div>
             </div>
         </div>
+        <button type="button" id="sidebar-close" class="rounded-md p-1.5 text-blue-200/70 hover:bg-white/10 hover:text-white lg:hidden" aria-label="Close menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
     </div>
 
     <nav class="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">

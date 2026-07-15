@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GradeController;
 use App\Http\Controllers\ModulePlaceholderController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StaffController;
@@ -44,6 +46,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/settings/users', [SettingsController::class, 'storeUser'])->name('settings.users.store');
         Route::post('/settings/users/{user}/toggle', [SettingsController::class, 'toggleUser'])->whereNumber('user')->name('settings.users.toggle');
         Route::post('/settings/users/{user}/remove', [SettingsController::class, 'destroyUser'])->whereNumber('user')->name('settings.users.destroy');
+        Route::post('/settings/grade-edit-window', [SettingsController::class, 'updateGradeEditWindow'])->name('settings.grade-edit-window');
+        Route::post('/settings/school-profile', [SettingsController::class, 'updateSchoolProfile'])->name('settings.school-profile');
 
         Route::post('/timetable/slots', [TimetableController::class, 'upsertSlot'])->name('timetable.upsert');
         Route::post('/timetable/slots/clear', [TimetableController::class, 'clearSlot'])->name('timetable.clear');
@@ -51,17 +55,29 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/timetable/generate', [TimetableController::class, 'generate'])->name('timetable.generate');
 
         Route::get('/notifications', fn () => app(ModulePlaceholderController::class)('Notifications', 'Week 9 — SMS/email templates and log.'))->name('notifications.index');
+
+        Route::post('/grades/boundaries', [GradeController::class, 'updateBoundaries'])->name('grades.boundaries.update');
     });
 
     Route::middleware('role:admin,super_admin,teacher')->group(function () {
         Route::get('/classes', [ClassController::class, 'index'])->name('classes.index');
         Route::get('/classes/{schoolClass}/roster', [ClassController::class, 'roster'])->whereNumber('schoolClass')->name('classes.roster');
+        Route::get('/students/by-parent', [StudentController::class, 'byParent'])->name('students.by-parent');
         Route::get('/students/{student}', [StudentController::class, 'show'])->whereNumber('student')->name('students.show');
 
         Route::get('/timetable', [TimetableController::class, 'index'])->name('timetable.index');
         Route::get('/timetable/print', [TimetableController::class, 'print'])->name('timetable.print');
-        Route::get('/attendance', fn () => app(ModulePlaceholderController::class)('Attendance', 'Week 5 — marking, history, and print view.'))->name('attendance.index');
-        Route::get('/grades', fn () => app(ModulePlaceholderController::class)('Grades', 'Week 6 — entry, boundaries, and reports.'))->name('grades.index');
+
+        Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+        Route::post('/attendance', [AttendanceController::class, 'store'])->name('attendance.store');
+        Route::get('/attendance/history', [AttendanceController::class, 'history'])->name('attendance.history');
+        Route::get('/attendance/print', [AttendanceController::class, 'print'])->name('attendance.print');
+
+        Route::get('/grades', [GradeController::class, 'index'])->name('grades.index');
+        Route::post('/grades', [GradeController::class, 'store'])->name('grades.store');
+        Route::get('/grades/boundaries', [GradeController::class, 'boundaries'])->name('grades.boundaries');
+        Route::get('/grades/report', [GradeController::class, 'report'])->name('grades.report');
+        Route::get('/grades/print', [GradeController::class, 'print'])->name('grades.print');
     });
 
     Route::middleware('role:admin,super_admin,finance')->group(function () {

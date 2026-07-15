@@ -28,7 +28,7 @@
                     </select>
                 </form>
                 @if ($schoolClass)
-                    <button type="button" onclick="document.getElementById('generate-modal').showModal()"
+                    <button type="button" data-dugsi-open="#generate-modal" data-dugsi-width="32rem"
                         class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Generate</button>
                     <a href="{{ route('timetable.print', ['class' => $schoolClass->id]) }}" target="_blank"
                         class="rounded-md bg-dugsi-primary px-3 py-2 text-xs font-semibold text-white hover:bg-[#162d56]">Print / PDF</a>
@@ -40,12 +40,6 @@
             @endif
         </div>
     </div>
-
-    @if (session('status'))
-        <div class="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            {{ session('status') }}
-        </div>
-    @endif
 
     @if ($errors->any())
         <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -168,7 +162,7 @@
 </div>
 
 @if ($canEdit && $schoolClass)
-<dialog id="slot-modal" class="m-auto w-full max-w-md rounded-xl border border-slate-200 p-0 shadow-xl">
+<div id="slot-modal" class="hidden" data-dugsi-width="28rem">
     <form method="POST" action="{{ route('timetable.upsert') }}" class="p-5" id="slot-form">
         @csrf
         <input type="hidden" name="class_id" value="{{ $schoolClass->id }}">
@@ -201,26 +195,29 @@
             </div>
         </div>
         <div class="mt-5 flex justify-end gap-2">
-            <button type="button" onclick="document.getElementById('slot-modal').close()" class="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+            <button type="button" data-dugsi-close class="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
             <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white">Save Slot</button>
         </div>
     </form>
-</dialog>
+</div>
 
-<dialog id="generate-modal" class="m-auto w-full max-w-lg rounded-xl border border-slate-200 p-0 shadow-xl">
-    <form method="POST" action="{{ route('timetable.generate') }}" id="generate-form">
+<div id="generate-modal" class="hidden" data-dugsi-width="32rem">
+    <form method="POST" action="{{ route('timetable.generate') }}" id="generate-form"
+        data-dugsi-confirm="Replace the current timetable for this class?"
+        data-dugsi-confirm-title="Generate timetable"
+        data-dugsi-confirm-ok="Generate">
         @csrf
         <input type="hidden" name="class_id" value="{{ $schoolClass->id }}">
-        <div class="flex items-center justify-between border-b border-slate-200 p-5">
+        <div class="flex items-start justify-between gap-3 border-b border-slate-200 p-4 sm:p-5">
             <div>
                 <h3 class="font-semibold text-slate-900">Generate Timetable</h3>
                 <p class="mt-0.5 text-xs text-slate-500">Set periods per subject per week · {{ $schoolClass->displayName() }}</p>
             </div>
-            <button type="button" onclick="document.getElementById('generate-modal').close()" class="text-slate-400 hover:text-slate-700" aria-label="Close">
+            <button type="button" data-dugsi-close class="text-slate-400 hover:text-slate-700" aria-label="Close">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-        <div class="max-h-[60vh] space-y-3 overflow-y-auto p-5">
+        <div class="max-h-[60vh] space-y-3 overflow-y-auto p-4 sm:p-5">
             <div id="generate-capacity-banner" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                 Total periods available: <strong>{{ $weeklyCapacity }}</strong> ({{ $periodCount }} periods × 5 days). Currently set: <strong id="generate-total">0</strong>
             </div>
@@ -241,18 +238,17 @@
                 </div>
             @endforeach
         </div>
-        <div class="flex items-center justify-between border-t border-slate-200 p-5">
-            <button type="button" id="generate-reset" class="text-xs text-slate-500 underline hover:text-slate-800">Reset to defaults</button>
+        <div class="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <button type="button" id="generate-reset" class="text-left text-xs text-slate-500 underline hover:text-slate-800">Reset to defaults</button>
             <div class="flex gap-2">
-                <button type="button" onclick="document.getElementById('generate-modal').close()"
-                    class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button type="button" data-dugsi-close
+                    class="flex-1 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 sm:flex-none">Cancel</button>
                 <button type="submit" id="generate-submit"
-                    class="rounded-lg bg-dugsi-primary px-4 py-2 text-sm font-medium text-white hover:bg-[#162d56]"
-                    onclick="return confirm('Replace the current timetable for this class?')">Generate</button>
+                    class="flex-1 rounded-lg bg-dugsi-primary px-4 py-2 text-sm font-medium text-white hover:bg-[#162d56] sm:flex-none">Generate</button>
             </div>
         </div>
     </form>
-</dialog>
+</div>
 
 <form id="swap-form" method="POST" action="{{ route('timetable.swap') }}" class="hidden">
     @csrf
@@ -275,7 +271,7 @@ function openSlotEditor(payload) {
     document.getElementById('slot-subject').value = payload.subject_id || '';
     filterTeachers(payload.subject_id || '');
     document.getElementById('slot-teacher').value = payload.teacher_id || '';
-    document.getElementById('slot-modal').showModal();
+    window.DugsiUI?.openModal('#slot-modal');
 }
 
 document.querySelectorAll('[data-slot-edit]').forEach((btn) => {
@@ -482,10 +478,10 @@ document.querySelectorAll('[data-drop-cell]').forEach((cell) => {
 </script>
 
 @if ($errors->has('teacher_id') || $errors->has('subject_id') || $errors->has('period_number'))
-    <script>document.getElementById('slot-modal')?.showModal();</script>
+    <script>document.addEventListener('DOMContentLoaded', () => window.DugsiUI?.openModal('#slot-modal'));</script>
 @endif
 @if ($errors->has('periods') || collect($errors->keys())->contains(fn ($k) => str_starts_with($k, 'periods.')))
-    <script>document.getElementById('generate-modal')?.showModal();</script>
+    <script>document.addEventListener('DOMContentLoaded', () => window.DugsiUI?.openModal('#generate-modal'));</script>
 @endif
 @endif
 @endsection

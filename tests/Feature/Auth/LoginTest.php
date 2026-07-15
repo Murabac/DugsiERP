@@ -89,6 +89,7 @@ class LoginTest extends TestCase
         $this->actingAs($teacher)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('Good morning, Abdirahman');
+            ->assertSee('Abdirahman')
+            ->assertSee('Periods Today');
     }
 }

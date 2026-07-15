@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ClassStatus;
+use App\Enums\StaffRoleLabel;
+use App\Enums\StaffStatus;
 use App\Enums\StudentStatus;
 use App\Enums\WaitlistStatus;
 use App\Models\ClassWaitlist;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
+use App\Models\Staff;
 use App\Support\AcademicYear;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,8 +23,9 @@ class ClassController extends Controller
     public function index(Request $request): View
     {
         $academicYear = AcademicYear::current();
+        $user = $request->user();
 
-        $classes = SchoolClass::query()
+        $query = SchoolClass::query()
             ->where('status', ClassStatus::Active)
             ->where('academic_year', $academicYear)
             ->withCount([
@@ -29,8 +33,14 @@ class ClassController extends Controller
                 'waitingList as waitlist_count',
             ])
             ->orderBy('form_level')
-            ->orderBy('section')
-            ->get();
+            ->orderBy('section');
+
+        if ($user->isTeacher()) {
+            $taughtIds = $user->taughtClassIds($academicYear);
+            $query->whereIn('id', $taughtIds ?: [0]);
+        }
+
+        $classes = $query->get();
 
         $totalStudents = $classes->sum('enrolled_count');
 
@@ -38,13 +48,14 @@ class ClassController extends Controller
             'classes' => $classes,
             'totalStudents' => $totalStudents,
             'academicYear' => $academicYear,
-            'canManage' => $request->user()->isAdmin(),
+            'canManage' => $user->isAdmin(),
         ]);
     }
 
     public function manage(): View
     {
         $classes = SchoolClass::query()
+            ->with('homeroomTeacher')
             ->withCount([
                 'activeEnrollments as enrolled_count',
                 'waitingList as waitlist_count',
@@ -58,8 +69,15 @@ class ClassController extends Controller
 
         $currentYear = AcademicYear::current();
 
+        $teachers = Staff::query()
+            ->where('role_label', StaffRoleLabel::Teacher)
+            ->where('status', StaffStatus::Active)
+            ->orderBy('full_name')
+            ->get(['id', 'full_name', 'employee_code']);
+
         return view('classes.manage', [
             'classes' => $classes,
+            'teachers' => $teachers,
             'totalStudents' => $totalStudents,
             'totalCapacity' => $totalCapacity,
             'academicYear' => $currentYear,
@@ -75,11 +93,17 @@ class ClassController extends Controller
             'academic_year' => ['required', 'string', 'max:16'],
             'capacity' => ['required', 'integer', 'min:1', 'max:100'],
             'room' => ['required', 'string', 'max:32'],
+            'homeroom_teacher_id' => ['nullable', 'integer', 'exists:staff,id'],
         ]);
 
         $data['section'] = strtoupper(trim($data['section']));
         $data['status'] = ClassStatus::Active;
         $data['room'] = trim($data['room']);
+        $data['homeroom_teacher_id'] = $data['homeroom_teacher_id'] ?? null;
+
+        if ($data['homeroom_teacher_id']) {
+            $this->assertActiveTeacher((int) $data['homeroom_teacher_id']);
+        }
 
         $exists = SchoolClass::query()
             ->where('form_level', $data['form_level'])
@@ -107,9 +131,15 @@ class ClassController extends Controller
             'section' => ['required', 'string', 'max:8'],
             'academic_year' => ['required', 'string', 'max:16'],
             'capacity' => ['required', 'integer', 'min:1', 'max:100'],
+            'homeroom_teacher_id' => ['nullable', 'integer', 'exists:staff,id'],
         ]);
 
         $data['section'] = strtoupper(trim($data['section']));
+        $data['homeroom_teacher_id'] = $data['homeroom_teacher_id'] ?? null;
+
+        if ($data['homeroom_teacher_id']) {
+            $this->assertActiveTeacher((int) $data['homeroom_teacher_id']);
+        }
 
         $exists = SchoolClass::query()
             ->where('form_level', $data['form_level'])
@@ -170,6 +200,7 @@ class ClassController extends Controller
 
     public function roster(Request $request, SchoolClass $schoolClass): View
     {
+        abort_unless($request->user()->canViewSchoolClass($schoolClass), 403);
         abort_if($schoolClass->status === ClassStatus::Archived && ! $request->user()->isAdmin(), 404);
 
         $search = trim((string) $request->query('q', ''));
@@ -261,5 +292,20 @@ class ClassController extends Controller
         return redirect()
             ->route('classes.roster', $schoolClass)
             ->with('status', $waitlist->student->full_name.' enrolled from the waitlist.');
+    }
+
+    private function assertActiveTeacher(int $staffId): void
+    {
+        $ok = Staff::query()
+            ->whereKey($staffId)
+            ->where('role_label', StaffRoleLabel::Teacher)
+            ->where('status', StaffStatus::Active)
+            ->exists();
+
+        if (! $ok) {
+            throw ValidationException::withMessages([
+                'homeroom_teacher_id' => 'Select an active teacher as class headmaster.',
+            ]);
+        }
     }
 }

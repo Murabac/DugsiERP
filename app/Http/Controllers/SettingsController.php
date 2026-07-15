@@ -48,7 +48,50 @@ class SettingsController extends Controller
             'unlinkedStaff' => $unlinkedStaff,
             'isSuperAdmin' => $actor->isSuperAdmin(),
             'academicYear' => \App\Support\AcademicYear::current(),
+            'gradeEditWindowDays' => \App\Models\SchoolSetting::gradeEditWindowDays(),
+            'schoolProfile' => [
+                'name' => \App\Models\SchoolSetting::schoolName(),
+                'location' => \App\Models\SchoolSetting::schoolLocation(),
+                'tagline' => \App\Models\SchoolSetting::schoolTagline(),
+            ],
         ]);
+    }
+
+    public function updateSchoolProfile(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $data = $request->validate([
+            'school_name' => ['required', 'string', 'max:120'],
+            'school_location' => ['required', 'string', 'max:120'],
+            'school_tagline' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        \App\Models\SchoolSetting::set('school_name', trim($data['school_name']));
+        \App\Models\SchoolSetting::set('school_location', trim($data['school_location']));
+        \App\Models\SchoolSetting::set(
+            'school_tagline',
+            trim((string) ($data['school_tagline'] ?? '')) ?: 'Secondary School'
+        );
+
+        return redirect()
+            ->route('settings.index', ['tab' => 'school'])
+            ->with('status', 'School profile updated. Printable documents will use the new name.');
+    }
+
+    public function updateGradeEditWindow(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'grade_edit_window_days' => ['required', 'integer', 'min:1', 'max:14'],
+        ]);
+
+        \App\Models\SchoolSetting::set('grade_edit_window_days', (string) $data['grade_edit_window_days']);
+
+        return redirect()
+            ->route('settings.index', ['tab' => 'academic'])
+            ->with('status', 'Teacher grade edit window updated to '.$data['grade_edit_window_days'].' day(s).');
     }
 
     public function storeUser(Request $request): RedirectResponse

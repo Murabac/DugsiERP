@@ -23,6 +23,23 @@ class SchoolWeek
     }
 
     /**
+     * School-week day key for a calendar date (Sat–Wed). Null on Thu/Fri.
+     */
+    public static function dayKey(?\Carbon\CarbonInterface $date = null): ?string
+    {
+        $date ??= now();
+
+        return match ($date->dayOfWeek) {
+            \Carbon\CarbonInterface::SATURDAY => 'sat',
+            \Carbon\CarbonInterface::SUNDAY => 'sun',
+            \Carbon\CarbonInterface::MONDAY => 'mon',
+            \Carbon\CarbonInterface::TUESDAY => 'tue',
+            \Carbon\CarbonInterface::WEDNESDAY => 'wed',
+            default => null,
+        };
+    }
+
+    /**
      * Fixed 6-period day schedule (students stay in their classroom).
      *
      * @return list<array{period: int, start: string, end: string, label: string}>

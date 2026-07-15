@@ -9,14 +9,14 @@
         <p class="mt-0.5 text-xs text-slate-500">Manage users, school profile, and academic configuration</p>
     </div>
 
-    <div class="mb-4 flex w-fit gap-1 rounded-lg bg-slate-100 p-1">
+    <div class="mb-4 flex w-full max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 sm:w-fit">
         @foreach ([
             'users' => 'Users',
             'school' => 'School Profile',
             'academic' => 'Academic Setup',
         ] as $key => $label)
             <a href="{{ route('settings.index', ['tab' => $key]) }}"
-                class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {{ $tab === $key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+                class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors {{ $tab === $key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
                 {{ $label }}
             </a>
         @endforeach
@@ -24,9 +24,9 @@
 
     @if ($tab === 'users')
         <div class="space-y-4">
-            <div class="flex justify-end">
-                <button type="button" onclick="document.getElementById('add-user-modal').showModal()"
-                    class="inline-flex items-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
+            <div class="flex justify-stretch sm:justify-end">
+                <button type="button" data-dugsi-open="#add-user-modal"
+                    class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56] sm:w-auto">
                     + Add User
                 </button>
             </div>
@@ -35,7 +35,8 @@
                 <div class="border-b border-slate-200 px-4 py-3">
                     <h3 class="text-xs font-semibold tracking-wider text-slate-700 uppercase">System Users</h3>
                 </div>
-                <table class="w-full text-sm">
+                <div class="overflow-x-auto">
+                <table class="w-full min-w-[720px] text-sm">
                     <thead>
                         <tr class="border-b border-slate-200 bg-slate-50">
                             @foreach (['User', 'Email', 'Role', 'Staff link', 'Last Login', 'Status', ''] as $h)
@@ -76,7 +77,11 @@
                                 </td>
                                 <td class="px-4 py-2.5">
                                     @if (auth()->user()->canManageUser($user))
-                                        <form method="POST" action="{{ route('settings.users.destroy', $user) }}" onsubmit="return confirm('Deactivate this user account?')">
+                                        <form method="POST" action="{{ route('settings.users.destroy', $user) }}"
+                                            data-dugsi-confirm="Deactivate this user account?"
+                                            data-dugsi-confirm-title="Remove user"
+                                            data-dugsi-confirm-ok="Deactivate"
+                                            data-dugsi-danger>
                                             @csrf
                                             <button type="submit" class="text-xs text-red-500 hover:underline">Remove</button>
                                         </form>
@@ -86,6 +91,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             </div>
 
             @unless ($isSuperAdmin)
@@ -95,7 +101,7 @@
             @endunless
         </div>
 
-        <dialog id="add-user-modal" class="m-auto w-full max-w-md rounded-xl border border-slate-200 p-0 shadow-xl">
+        <div id="add-user-modal" class="hidden" data-dugsi-width="28rem">
             <form method="POST" action="{{ route('settings.users.store') }}" class="p-5">
                 @csrf
                 <h3 class="mb-4 text-sm font-semibold text-slate-900">Add System User</h3>
@@ -141,20 +147,58 @@
                     <div class="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">Temporary password: <strong>password</strong></div>
                 </div>
                 <div class="mt-5 flex justify-end gap-2">
-                    <button type="button" onclick="this.closest('dialog').close()" class="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+                    <button type="button" data-dugsi-close class="rounded-md border border-slate-300 px-3 py-2 text-sm">Cancel</button>
                     <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white">Create User</button>
                 </div>
             </form>
-        </dialog>
+        </div>
 
         @if ($errors->any() && $tab === 'users')
-            <script>document.getElementById('add-user-modal')?.showModal();</script>
+            <script>document.addEventListener('DOMContentLoaded', () => window.DugsiUI?.openModal('#add-user-modal'));</script>
         @endif
 
     @elseif ($tab === 'school')
         <div class="max-w-xl rounded-lg border border-slate-200 bg-white p-5">
             <h3 class="mb-2 text-xs font-semibold tracking-wider text-slate-700 uppercase">School Profile</h3>
-            <p class="text-sm text-slate-500">School name, logo, and letterhead settings will be editable here in a later polish pass. Branding currently uses <strong>Qudus</strong> / Dugsi ERP defaults.</p>
+            <p class="mb-4 text-sm text-slate-500">
+                This name appears on printable documents (grade reports, attendance registers, timetables).
+                The app product name remains Dugsi ERP in the sidebar and login only.
+            </p>
+            <form method="POST" action="{{ route('settings.school-profile') }}" class="space-y-3">
+                @csrf
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">School name</label>
+                    <input type="text" name="school_name" required maxlength="120"
+                        value="{{ old('school_name', $schoolProfile['name']) }}"
+                        class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                    @error('school_name')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Tagline</label>
+                    <input type="text" name="school_tagline" maxlength="120"
+                        value="{{ old('school_tagline', $schoolProfile['tagline']) }}"
+                        class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary"
+                        placeholder="Secondary School">
+                    @error('school_tagline')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Location</label>
+                    <input type="text" name="school_location" required maxlength="120"
+                        value="{{ old('school_location', $schoolProfile['location']) }}"
+                        class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary"
+                        placeholder="Somaliland">
+                    @error('school_location')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
+                    Save School Profile
+                </button>
+            </form>
         </div>
 
     @else
@@ -164,6 +208,37 @@
                 <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">{{ $academicYear }}</div>
                 <p class="mt-2 text-xs text-slate-500">Year switcher (view past years without changing live data) is planned — see CONTEXT.md. The app currently operates on this computed year.</p>
             </div>
+
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 class="mb-3 text-xs font-semibold tracking-wider text-slate-700 uppercase">Grade Edit Window</h3>
+                @if ($isSuperAdmin)
+                    <form method="POST" action="{{ route('settings.grade-edit-window') }}" class="max-w-md space-y-3">
+                        @csrf
+                        <p class="text-sm text-slate-600">
+                            Teachers (including class headmasters) may change a score for this many days after their <strong>first save</strong>.
+                            After day 1 they must add an edit note. Admins can always correct grades.
+                        </p>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-700">Days (1–14)</label>
+                            <input type="number" name="grade_edit_window_days" min="1" max="14" required
+                                value="{{ old('grade_edit_window_days', $gradeEditWindowDays) }}"
+                                class="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                            @error('grade_edit_window_days')
+                                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
+                            Save Window
+                        </button>
+                    </form>
+                @else
+                    <p class="text-sm text-slate-600">
+                        Current teacher edit window: <strong>{{ $gradeEditWindowDays }} day{{ $gradeEditWindowDays === 1 ? '' : 's' }}</strong>
+                        after first save. Only Super Admin can change this.
+                    </p>
+                @endif
+            </div>
+
             <div class="rounded-lg border border-slate-200 bg-white p-4">
                 <p class="text-sm text-slate-500">Class sections are managed under <a href="{{ route('classes.manage') }}" class="font-medium text-dugsi-primary hover:underline">Manage Classes</a>.</p>
             </div>

@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AcademicTerm;
 use App\Enums\ClassStatus;
 use App\Enums\Gender;
 use App\Enums\GuardianRelationship;
 use App\Enums\StudentStatus;
 use App\Enums\WaitlistStatus;
+use App\Models\AttendanceRecord;
 use App\Models\ClassWaitlist;
 use App\Models\Enrollment;
+use App\Models\Grade;
 use App\Models\Guardian;
 use App\Models\SchoolClass;
 use App\Models\Student;
@@ -47,11 +50,116 @@ class StudentController extends Controller
             )),
             'relationships' => GuardianRelationship::cases(),
             'academicYear' => $academicYear,
-            'cities' => SomalilandCities::all(),
             'dobMinYear' => $birthYears['min'],
             'dobMaxYear' => $birthYears['max'],
             'dobDefault' => AcademicYear::defaultDob(),
+            'cities' => SomalilandCities::all(),
         ]);
+    }
+
+    /**
+     * Find students by parent/guardian name or phone across all classes.
+     */
+    public function byParent(Request $request): View
+    {
+        $user = $request->user();
+        $q = trim((string) $request->query('q', ''));
+        $families = collect();
+        $tooShort = false;
+
+        if ($q !== '') {
+            if (mb_strlen($q) < 2) {
+                $tooShort = true;
+            } else {
+                $like = '%'.$this->escapeLike($q).'%';
+
+                $matched = Guardian::query()
+                    ->where(function ($query) use ($like) {
+                        $query->whereRaw("full_name LIKE ? ESCAPE '\\'", [$like])
+                            ->orWhereRaw("phone LIKE ? ESCAPE '\\'", [$like]);
+                    })
+                    ->get();
+
+                $phoneKeys = $matched
+                    ->map(fn (Guardian $g) => $g->normalizedPhone())
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                $guardians = $matched;
+
+                if ($phoneKeys->isNotEmpty()) {
+                    $siblings = Guardian::query()
+                        ->whereNotNull('phone')
+                        ->where('phone', '!=', '')
+                        ->whereNotIn('id', $matched->pluck('id')->all() ?: [0])
+                        ->with(['student.currentEnrollment.schoolClass', 'student.primaryGuardian'])
+                        ->get()
+                        ->filter(fn (Guardian $g) => $phoneKeys->contains($g->normalizedPhone()));
+
+                    $matched->loadMissing(['student.currentEnrollment.schoolClass', 'student.primaryGuardian']);
+                    $guardians = $matched->concat($siblings)->unique('id')->values();
+                } else {
+                    $guardians->loadMissing(['student.currentEnrollment.schoolClass', 'student.primaryGuardian']);
+                }
+
+                $families = $guardians
+                    ->groupBy(function (Guardian $g) {
+                        $phone = $g->normalizedPhone();
+
+                        return $phone !== '' ? 'phone:'.$phone : 'guardian:'.$g->id;
+                    })
+                    ->map(function ($group) use ($user) {
+                        /** @var \Illuminate\Support\Collection<int, Guardian> $group */
+                        $students = $group
+                            ->pluck('student')
+                            ->filter()
+                            ->unique('id')
+                            ->filter(fn (Student $s) => $user->canViewStudent($s))
+                            ->values();
+
+                        if ($students->isEmpty()) {
+                            return null;
+                        }
+
+                        $primary = $group->firstWhere('is_primary', true) ?? $group->first();
+
+                        return [
+                            'parent_name' => $primary->full_name,
+                            'parent_phone' => $primary->phone,
+                            'relationship' => $primary->relationship?->label(),
+                            'students' => $students->map(function (Student $student) use ($group) {
+                                $links = $group->where('student_id', $student->id);
+
+                                return [
+                                    'student' => $student,
+                                    'class' => $student->currentEnrollment?->schoolClass,
+                                    'guardians' => $links->values(),
+                                ];
+                            }),
+                        ];
+                    })
+                    ->filter()
+                    ->sortBy('parent_name')
+                    ->values();
+            }
+        }
+
+        return view('students.by-parent', [
+            'q' => $q,
+            'families' => $families,
+            'searched' => $q !== '',
+            'tooShort' => $tooShort,
+        ]);
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return str_replace(
+            ['\\', '%', '_'],
+            ['\\\\', '\\%', '\\_'],
+            $value
+        );
     }
 
     public function store(Request $request): RedirectResponse
@@ -156,8 +264,10 @@ class StudentController extends Controller
             ->with('status', $message);
     }
 
-    public function show(Student $student): View
+    public function show(Request $request, Student $student): View
     {
+        abort_unless($request->user()->canViewStudent($student), 403);
+
         $student->load([
             'guardians',
             'enrollments.schoolClass',
@@ -169,12 +279,52 @@ class StudentController extends Controller
         $enrollment = $student->currentEnrollment;
         $waitlist = $student->activeWaitlistEntry;
 
+        $attendanceHistory = AttendanceRecord::query()
+            ->where('student_id', $student->id)
+            ->orderByDesc('date')
+            ->limit(30)
+            ->get();
+
+        $attendanceStats = [
+            'present' => $attendanceHistory->filter(fn ($r) => $r->status === \App\Enums\AttendanceStatus::Present)->count(),
+            'late' => $attendanceHistory->filter(fn ($r) => $r->status === \App\Enums\AttendanceStatus::Late)->count(),
+            'absent' => $attendanceHistory->filter(fn ($r) => $r->status === \App\Enums\AttendanceStatus::Absent)->count(),
+            'suspended' => $attendanceHistory->filter(fn ($r) => $r->status === \App\Enums\AttendanceStatus::Suspended)->count(),
+        ];
+        $attendanceTotal = array_sum($attendanceStats);
+        $attendanceRate = $attendanceTotal > 0
+            ? round((($attendanceStats['present'] + $attendanceStats['late']) / $attendanceTotal) * 100, 1)
+            : null;
+
+        $gradeTerm = AcademicTerm::tryFrom((string) $request->query('term', AcademicTerm::Term2->value))
+            ?? AcademicTerm::Term2;
+        $year = AcademicYear::current();
+
+        $studentGrades = collect();
+        if ($enrollment) {
+            $studentGrades = Grade::query()
+                ->with('subject')
+                ->where('student_id', $student->id)
+                ->where('class_id', $enrollment->class_id)
+                ->where('term', $gradeTerm)
+                ->where('academic_year', $year)
+                ->get()
+                ->sortBy(fn (Grade $g) => $g->subject?->sort_order ?? 999)
+                ->values();
+        }
+
         return view('students.show', [
             'student' => $student,
             'enrollment' => $enrollment,
             'waitlist' => $waitlist,
             'schoolClass' => $enrollment?->schoolClass ?? $waitlist?->schoolClass,
             'tab' => request()->query('tab', 'overview'),
+            'attendanceHistory' => $attendanceHistory,
+            'attendanceRate' => $attendanceRate,
+            'gradeTerm' => $gradeTerm,
+            'gradeTerms' => AcademicTerm::options(),
+            'studentGrades' => $studentGrades,
+            'academicYear' => $year,
         ]);
     }
 
