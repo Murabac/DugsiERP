@@ -4,46 +4,72 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">Finance Dashboard</h2>
-            <p class="mt-0.5 text-xs text-slate-500">{{ now()->format('F Y') }} · Academic Year {{ $academicYear }}</p>
-        </div>
-        <a href="{{ route('finance.fee-collection') }}" class="inline-flex items-center justify-center rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
-            Record Payment
-        </a>
-    </div>
+    <x-section-header title="Finance Dashboard" :sub="now()->format('F Y').' · Academic Year '.$academicYear">
+        <x-slot:action>
+            <x-btn href="{{ route('finance.fee-collection') }}">
+                <x-icon name="dollar-sign" :size="14" /> Record Payment
+            </x-btn>
+        </x-slot:action>
+    </x-section-header>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        @foreach ($stats as $stat)
-            <div class="rounded-lg border border-slate-200 bg-white p-4">
-                <div class="flex items-start justify-between gap-2">
-                    <div class="min-w-0">
-                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{{ $stat['label'] }}</div>
-                        <div class="mt-1 text-2xl font-bold {{ $stat['accent'] ? 'text-dugsi-primary' : 'text-slate-900' }}">{{ $stat['value'] }}</div>
-                        <div class="mt-0.5 text-xs text-slate-400">{{ $stat['sub'] }}</div>
-                    </div>
-                    <div class="rounded-md {{ $stat['accent'] ? 'bg-blue-50 text-dugsi-primary' : 'bg-slate-50 text-slate-500' }} p-2">
-                        <x-icon :name="$stat['icon']" :size="17" />
-                    </div>
-                </div>
-            </div>
+        @foreach ($stats as $i => $stat)
+            <x-stat-card
+                :label="$stat['label']"
+                :value="$stat['value']"
+                :sub="$stat['sub']"
+                :icon="$stat['icon']"
+                :accent="$i === 0 || !empty($stat['accent'])"
+            />
         @endforeach
     </div>
 
-    <div class="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-700">Income: Collected vs. Due</h3>
-        <div class="flex h-44 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 text-center text-sm text-slate-400">
-            Fee charts unlock in Week 7 — student and class counts above are live now.
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-700">Fees overview</h3>
+            <div class="relative mx-auto h-52 w-full max-w-[14rem]">
+                <canvas data-dugsi-chart='@json($feesChart)'></canvas>
+            </div>
+            <a href="{{ route('finance.fees-dashboard') }}" class="mt-3 inline-block text-xs font-medium text-blue-700 hover:underline">Open Fees Dashboard →</a>
         </div>
-    </div>
-
-    <div class="rounded-lg border border-slate-200 bg-white">
-        <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-700">Recent Invoices</h3>
-            <a href="{{ route('finance.fee-collection') }}" class="text-xs text-blue-700 hover:underline">View all</a>
+        <div class="rounded-lg border border-slate-200 bg-white lg:col-span-2">
+            <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-700">Recent Invoices</h3>
+                <a href="{{ route('finance.fee-collection') }}" class="text-xs text-blue-700 hover:underline">View all</a>
+            </div>
+            @if ($recentInvoices->isEmpty())
+                <p class="px-4 py-8 text-center text-sm text-slate-400">No invoices yet — they are created automatically at the start of each month.</p>
+            @else
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-slate-100 bg-slate-50">
+                                <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Invoice</th>
+                                <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Student</th>
+                                <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Class</th>
+                                <th class="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Amount</th>
+                                <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
+                                <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Month</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($recentInvoices as $invoice)
+                                <tr class="border-b border-slate-50">
+                                    <td class="px-4 py-2.5 font-mono text-xs text-slate-600">{{ $invoice->invoice_number }}</td>
+                                    <td class="px-4 py-2.5 font-medium text-slate-900">{{ $invoice->student?->full_name }}</td>
+                                    <td class="px-4 py-2.5 text-slate-600">{{ $invoice->schoolClass?->displayName() ?? '—' }}</td>
+                                    <td class="px-4 py-2.5 text-right tabular-nums">{{ \App\Support\Money::format($invoice->amount_due) }}</td>
+                                    <td class="px-4 py-2.5">
+                                        <x-status-badge :status="$invoice->status" />
+                                    </td>
+                                    <td class="px-4 py-2.5 text-slate-600">{{ $invoice->billing_month?->format('M Y') }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         </div>
-        <p class="px-4 py-8 text-center text-sm text-slate-400">No invoices yet — fee module arrives in Week 7.</p>
     </div>
 </div>
 @endsection

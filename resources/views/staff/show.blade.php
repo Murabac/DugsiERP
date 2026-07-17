@@ -9,17 +9,6 @@
         ['label' => $staff->full_name],
     ]" />
 
-    @if ($errors->any())
-        <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            <div class="font-medium">Could not save changes:</div>
-            <ul class="mt-1 list-disc pl-4 text-xs">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
     <div class="rounded-lg border border-slate-200 bg-white p-4">
         <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100 text-lg font-bold text-indigo-800">
@@ -60,49 +49,148 @@
     </div>
 
     <div class="flex w-full max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 sm:w-fit">
-        <span class="whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-xs font-medium text-slate-900 shadow-sm">Overview</span>
+        <a href="{{ route('staff.show', ['staff' => $staff, 'tab' => 'overview']) }}"
+            class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors {{ ($tab ?? 'overview') === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+            Overview
+        </a>
         <span class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium text-slate-400">Assignments</span>
-        <span class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium text-slate-400">Payroll (Week 8)</span>
+        @if ($canSeeSalary)
+            <a href="{{ route('staff.show', ['staff' => $staff, 'tab' => 'payroll']) }}"
+                class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors {{ ($tab ?? 'overview') === 'payroll' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+                Payroll
+            </a>
+        @endif
     </div>
 
     <div class="rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
-        <div class="grid grid-cols-1 gap-6 text-sm md:grid-cols-2">
-            <div>
-                <h4 class="mb-3 text-xs font-semibold tracking-wider text-slate-700 uppercase">Personal</h4>
-                <div class="space-y-2">
-                    @foreach ([
-                        ['Full Name', $staff->full_name],
-                        ['Employee ID', $staff->employee_code],
-                        ['Gender', $staff->gender?->label() ?? '—'],
-                        ['DOB', $staff->dob?->format('Y-m-d') ?? '—'],
-                        ['Phone', $staff->phone ?? '—'],
-                    ] as [$k, $v])
-                        <div class="flex gap-2">
-                            <span class="w-28 flex-shrink-0 text-xs text-slate-400">{{ $k }}</span>
-                            <span class="text-xs font-medium text-slate-800">{{ $v }}</span>
-                        </div>
-                    @endforeach
+        @if (($tab ?? 'overview') === 'payroll' && $canSeeSalary)
+            <div class="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h4 class="text-xs font-semibold tracking-wider text-slate-700 uppercase">Payroll History</h4>
+                <a href="{{ route('payroll.index') }}" class="text-xs font-medium text-dugsi-primary hover:underline">Open all payroll runs →</a>
+            </div>
+            @if (($payrollHistory ?? collect())->isEmpty())
+                <p class="py-8 text-center text-sm text-slate-400">No payslips yet for this staff member.</p>
+            @else
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[520px] text-sm">
+                        <thead>
+                            <tr class="border-b border-slate-200 bg-slate-50">
+                                @foreach (['Month', 'Payslip #', 'Amount', 'Confirmed', ''] as $h)
+                                    <th class="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{{ $h }}</th>
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($payrollHistory as $item)
+                                <tr class="border-b border-slate-50 hover:bg-slate-50">
+                                    <td class="px-3 py-2.5 font-medium text-slate-800">
+                                        {{ $item->payrollRun?->billing_month?->format('F Y') ?? '—' }}
+                                    </td>
+                                    <td class="px-3 py-2.5 font-mono text-xs text-slate-500">{{ $item->payslip_number }}</td>
+                                    <td class="px-3 py-2.5 font-medium text-slate-800">{{ \App\Support\Money::format($item->salary_usd) }}</td>
+                                    <td class="px-3 py-2.5 text-xs text-slate-500">
+                                        {{ $item->payrollRun?->confirmed_at?->format('j M Y') ?? '—' }}
+                                    </td>
+                                    <td class="px-3 py-2.5">
+                                        @if ($item->payrollRun)
+                                            <a href="{{ route('payroll.payslip', [$item->payrollRun, $item]) }}" target="_blank" rel="noopener"
+                                                class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline">
+                                                <x-icon name="eye" :size="11" /> Payslip
+                                            </a>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        @else
+            <div class="grid grid-cols-1 gap-6 text-sm md:grid-cols-2">
+                <div>
+                    <h4 class="mb-3 text-xs font-semibold tracking-wider text-slate-700 uppercase">Personal</h4>
+                    <div class="space-y-2">
+                        @foreach ([
+                            ['Full Name', $staff->full_name],
+                            ['Employee ID', $staff->employee_code],
+                            ['Gender', $staff->gender?->label() ?? '—'],
+                            ['DOB', $staff->dob?->format('Y-m-d') ?? '—'],
+                            ['Phone', $staff->phone ?? '—'],
+                        ] as [$k, $v])
+                            <div class="flex gap-2">
+                                <span class="w-28 flex-shrink-0 text-xs text-slate-400">{{ $k }}</span>
+                                <span class="text-xs font-medium text-slate-800">{{ $v }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+                <div>
+                    <h4 class="mb-3 text-xs font-semibold tracking-wider text-slate-700 uppercase">Employment</h4>
+                    <div class="space-y-2">
+                        @foreach ([
+                            ['Role', $staff->role_label->label()],
+                            ['Subject', $staff->subject_specialty ?? '—'],
+                            ['Qualification', $staff->qualification ?? '—'],
+                            ['Date Joined', $staff->date_joined?->format('d M Y') ?? '—'],
+                            ['Status', $staff->status->label()],
+                            ['Salary', $canSeeSalary ? ($staff->fixed_salary_usd !== null ? '$'.number_format((float) $staff->fixed_salary_usd, 2) : '—') : '••••'],
+                        ] as [$k, $v])
+                            <div class="flex gap-2">
+                                <span class="w-28 flex-shrink-0 text-xs text-slate-400">{{ $k }}</span>
+                                <span class="text-xs font-medium text-slate-800">{{ $v }}</span>
+                            </div>
+                        @endforeach
+                    </div>
                 </div>
             </div>
-            <div>
-                <h4 class="mb-3 text-xs font-semibold tracking-wider text-slate-700 uppercase">Employment</h4>
-                <div class="space-y-2">
-                    @foreach ([
-                        ['Role', $staff->role_label->label()],
-                        ['Subject', $staff->subject_specialty ?? '—'],
-                        ['Qualification', $staff->qualification ?? '—'],
-                        ['Date Joined', $staff->date_joined?->format('d M Y') ?? '—'],
-                        ['Status', $staff->status->label()],
-                        ['Salary', $canSeeSalary ? ($staff->fixed_salary_usd !== null ? '$'.number_format((float) $staff->fixed_salary_usd, 2) : '—') : '••••'],
-                    ] as [$k, $v])
-                        <div class="flex gap-2">
-                            <span class="w-28 flex-shrink-0 text-xs text-slate-400">{{ $k }}</span>
-                            <span class="text-xs font-medium text-slate-800">{{ $v }}</span>
-                        </div>
-                    @endforeach
+
+            @if ($canEdit && $staff->checkin_token)
+                <div class="mt-6 rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <h4 class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-700">Phone check-in</h4>
+                    <p class="mb-2 text-xs text-slate-500">Send this link to their phone (WhatsApp). They must be on school Wi‑Fi and enroll fingerprint / Face ID once.</p>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input type="text" readonly id="checkin-url" value="{{ $staff->checkinUrl() }}"
+                            class="w-full flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs">
+                        <button type="button" id="copy-checkin"
+                            class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                            Copy link
+                        </button>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-3">
+                        <form method="POST" action="{{ route('staff.checkin-link', $staff) }}"
+                            data-dugsi-confirm="Old check-in links will stop working. Continue?"
+                            data-dugsi-confirm-title="Regenerate link"
+                            data-dugsi-confirm-ok="Regenerate">
+                            @csrf
+                            <button type="submit" class="text-xs font-medium text-blue-700 hover:underline">Regenerate link</button>
+                        </form>
+                        <form method="POST" action="{{ route('staff.reset-biometric', $staff) }}"
+                            data-dugsi-confirm="They will need to enroll biometric again on their phone."
+                            data-dugsi-confirm-title="Reset biometric"
+                            data-dugsi-confirm-ok="Reset"
+                            data-dugsi-danger>
+                            @csrf
+                            <button type="submit" class="text-xs font-medium text-red-600 hover:underline">Reset biometric</button>
+                        </form>
+                    </div>
                 </div>
-            </div>
-        </div>
+                @push('scripts')
+                <script>
+                document.getElementById('copy-checkin')?.addEventListener('click', async () => {
+                    const input = document.getElementById('checkin-url');
+                    try {
+                        await navigator.clipboard.writeText(input.value);
+                        window.DugsiUI?.success('Link copied');
+                    } catch {
+                        input.select();
+                        document.execCommand('copy');
+                        window.DugsiUI?.success('Link copied');
+                    }
+                });
+                </script>
+                @endpush
+            @endif
+        @endif
     </div>
 </div>
 
@@ -206,7 +294,7 @@
     </form>
 </div>
 
-@if ($errors->any())
+@if ($errors->any() || request()->boolean('edit'))
     <script>document.addEventListener('DOMContentLoaded', () => window.DugsiUI?.openModal('#edit-staff-modal'));</script>
 @endif
 @endif

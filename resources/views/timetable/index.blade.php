@@ -8,18 +8,14 @@
 @endphp
 
 <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">Timetable</h2>
-            <p class="mt-0.5 text-xs text-slate-500">
-                Week: Saturday – Wednesday · {{ $academicYear }} · {{ count($periods) }} periods/day
-                @if ($mode === 'admin') · Drag cells to rearrange @endif
-            </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
+    <x-section-header
+        title="Timetable"
+        :sub="'Week: Saturday – Wednesday · '.$academicYear.' · '.count($periods).' periods/day'.($mode === 'admin' ? ' · Drag cells to rearrange' : '')"
+    >
+        <x-slot:action>
             @if ($mode === 'admin')
                 <form method="GET" action="{{ route('timetable.index') }}" class="flex items-center gap-2">
-                    <select name="class" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <select name="class" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm">
                         @forelse ($classes as $c)
                             <option value="{{ $c->id }}" @selected($schoolClass?->id === $c->id)>{{ $c->displayName() }}</option>
                         @empty
@@ -28,18 +24,19 @@
                     </select>
                 </form>
                 @if ($schoolClass)
-                    <button type="button" data-dugsi-open="#generate-modal" data-dugsi-width="32rem"
-                        class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Generate</button>
-                    <a href="{{ route('timetable.print', ['class' => $schoolClass->id]) }}" target="_blank"
-                        class="rounded-md bg-dugsi-primary px-3 py-2 text-xs font-semibold text-white hover:bg-[#162d56]">Print / PDF</a>
+                    <x-btn variant="secondary" type="button" data-dugsi-open="#generate-modal" data-dugsi-width="32rem">Generate</x-btn>
+                    <x-btn href="{{ route('timetable.print', ['class' => $schoolClass->id]) }}" target="_blank" rel="noopener">
+                        <x-icon name="printer" :size="14" /> Print / PDF
+                    </x-btn>
                 @endif
             @else
-                <span class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">Read-only</span>
-                <a href="{{ route('timetable.print') }}" target="_blank"
-                    class="rounded-md bg-dugsi-primary px-3 py-2 text-xs font-semibold text-white hover:bg-[#162d56]">Print / PDF</a>
+                <span class="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">Read-only</span>
+                <x-btn href="{{ route('timetable.print') }}" target="_blank" rel="noopener">
+                    <x-icon name="printer" :size="14" /> Print / PDF
+                </x-btn>
             @endif
-        </div>
-    </div>
+        </x-slot:action>
+    </x-section-header>
 
     @if ($errors->any())
         <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

@@ -8,24 +8,16 @@
 @endphp
 
 <div class="mx-auto max-w-2xl space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">Mark Attendance</h2>
-            <p class="mt-0.5 text-xs text-slate-500">Select class and date, then mark each student · {{ $academicYear }}</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            <a href="{{ route('attendance.history', array_filter(['class' => $schoolClass?->id])) }}"
-                class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                History
-            </a>
+    <x-section-header title="Mark Attendance" :sub="'Select class and date, then mark each student · '.$academicYear">
+        <x-slot:action>
+            <x-btn variant="secondary" href="{{ route('attendance.history', array_filter(['class' => $schoolClass?->id])) }}">History</x-btn>
             @if ($schoolClass)
-                <a href="{{ route('attendance.print', ['class' => $schoolClass->id, 'date' => $date]) }}" target="_blank"
-                    class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    <x-icon name="file-text" :size="14" /> Print View
-                </a>
+                <x-btn variant="secondary" :href="route('attendance.print', ['class' => $schoolClass->id, 'date' => $date])" target="_blank" rel="noopener">
+                    <x-icon name="printer" :size="14" /> Print View
+                </x-btn>
             @endif
-        </div>
-    </div>
+        </x-slot:action>
+    </x-section-header>
 
     @if ($classes->isEmpty())
         <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
@@ -140,7 +132,7 @@
                 <div class="space-y-3 p-5">
                     <div class="flex items-start gap-2 text-sm text-slate-700">
                         <span class="mt-0.5 text-amber-500" aria-hidden="true">⚠</span>
-                        <span><strong id="sms-count">0</strong> absence SMS will be logged for guardians (live SMS in Week 9).</span>
+                        <span><strong id="sms-count">0</strong> absence SMS will be sent to guardians via the configured SMS gateway (or logged as Failed if credentials are not set).</span>
                     </div>
                     <div id="sms-list" class="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3"></div>
                     <div class="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-slate-600">
@@ -150,7 +142,7 @@
                 </div>
                 <div class="flex flex-col-reverse gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
                     <button type="button" id="sms-skip" class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Skip SMS, Save Only</button>
-                    <button type="button" id="sms-confirm" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">Confirm &amp; Log SMS</button>
+                    <button type="button" id="sms-confirm" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">Confirm &amp; Send SMS</button>
                 </div>
             </div>
         @endif

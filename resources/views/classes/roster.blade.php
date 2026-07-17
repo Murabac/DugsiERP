@@ -10,24 +10,21 @@
         ['label' => 'Student Roster'],
     ]" />
 
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">{{ $schoolClass->displayName() }} — Student Roster</h2>
-            <p class="mt-0.5 text-xs text-slate-500">
-                {{ $schoolClass->enrolled_count ?? $enrollments->count() }} enrolled
-                · Capacity {{ $schoolClass->capacity }}
-                @if (($schoolClass->waitlist_count ?? $waitlist->count()) > 0)
-                    · <span class="font-medium text-amber-700">{{ $schoolClass->waitlist_count ?? $waitlist->count() }} on waitlist</span>
-                @endif
-            </p>
-        </div>
-        @if ($canAdd)
-            <a href="{{ route('students.create', ['class' => $schoolClass->id]) }}"
-                class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56] sm:w-auto">
-                + Add Student
-            </a>
-        @endif
-    </div>
+    <x-section-header
+        :title="$schoolClass->displayName().' — Student Roster'"
+        :sub="($schoolClass->enrolled_count ?? $enrollments->count()).' enrolled · Capacity '.$schoolClass->capacity.(($schoolClass->waitlist_count ?? $waitlist->count()) > 0 ? ' · '.($schoolClass->waitlist_count ?? $waitlist->count()).' on waitlist' : '')"
+    >
+        <x-slot:action>
+            <x-btn variant="secondary" href="{{ route('classes.roster', ['schoolClass' => $schoolClass, 'export' => 1]) }}" onclick="window.print(); return false;">
+                <x-icon name="download" :size="14" /> Export
+            </x-btn>
+            @if ($canAdd)
+                <x-btn href="{{ route('students.create', ['class' => $schoolClass->id]) }}">
+                    <x-icon name="plus" :size="14" /> Add Student
+                </x-btn>
+            @endif
+        </x-slot:action>
+    </x-section-header>
 
     @if ($waitlist->isNotEmpty())
         <div class="rounded-lg border border-amber-200 bg-amber-50/60">
@@ -61,7 +58,7 @@
                             <td class="px-4 py-2.5 text-xs text-slate-500">{{ $entry->created_at?->format('d M Y') }}</td>
                             <td class="px-4 py-2.5">
                                 <div class="flex items-center gap-3">
-                                    <a href="{{ route('students.show', $s) }}" class="text-xs text-blue-700 hover:underline">View</a>
+                                    <a href="{{ route('students.show', $s) }}" class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"><x-icon name="eye" :size="12" /> View</a>
                                     @if ($canEnrollWaitlist)
                                         <form method="POST" action="{{ route('classes.waitlist.enroll', [$schoolClass, $entry]) }}">
                                             @csrf
@@ -136,13 +133,17 @@
                         <td class="px-4 py-2.5 text-xs text-slate-500">{{ $g?->full_name ?? '—' }}</td>
                         <td class="px-4 py-2.5"><x-status-badge :status="$s->status" /></td>
                         <td class="px-4 py-2.5">
-                            <a href="{{ route('students.show', $s) }}" class="text-xs text-blue-700 hover:underline">View</a>
+                            <a href="{{ route('students.show', $s) }}" class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"><x-icon name="eye" :size="12" /> View</a>
                         </td>
                     </tr>
                 @empty
                     <tr>
                         <td colspan="7" class="px-4 py-10 text-center text-sm text-slate-400">
-                            No students match your filters.
+                            @if (request()->filled('q') || request()->filled('status'))
+                                No students match your filters.
+                            @else
+                                No students enrolled in this class yet.
+                            @endif
                         </td>
                     </tr>
                 @endforelse

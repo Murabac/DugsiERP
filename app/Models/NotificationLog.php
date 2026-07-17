@@ -19,6 +19,7 @@ class NotificationLog extends Model
         'status',
         'related_student_id',
         'related_attendance_id',
+        'related_invoice_id',
         'sent_at',
         'error',
     ];
@@ -40,5 +41,10 @@ class NotificationLog extends Model
     public function attendanceRecord(): BelongsTo
     {
         return $this->belongsTo(AttendanceRecord::class, 'related_attendance_id');
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class, 'related_invoice_id');
     }
 }

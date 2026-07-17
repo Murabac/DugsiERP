@@ -13,25 +13,21 @@
 @endphp
 
 <div class="space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">Classes</h2>
-            <p class="mt-0.5 text-xs text-slate-500">{{ $academicYear }} · {{ $classes->count() }} classes · {{ $totalStudents }} students enrolled</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            <a href="{{ route('students.by-parent') }}" class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+    <x-section-header title="Classes" :sub="$academicYear.' · '.$classes->count().' classes · '.$totalStudents.' students enrolled'">
+        <x-slot:action>
+            <x-btn variant="secondary" href="{{ route('students.by-parent') }}">
                 <x-icon name="users" :size="14" /> Find by Parent
-            </a>
+            </x-btn>
             @if ($canManage)
-                <a href="{{ route('classes.manage') }}" class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <x-btn variant="secondary" href="{{ route('classes.manage') }}">
                     <x-icon name="settings" :size="14" /> Manage Classes
-                </a>
-                <a href="{{ route('students.create') }}" class="inline-flex items-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
-                    + Add Student
-                </a>
+                </x-btn>
+                <x-btn href="{{ route('students.create') }}">
+                    <x-icon name="plus" :size="14" /> Add Student
+                </x-btn>
             @endif
-        </div>
-    </div>
+        </x-slot:action>
+    </x-section-header>
 
     @if ($classes->isEmpty())
         <div class="rounded-lg border border-slate-200 bg-white p-10 text-center">

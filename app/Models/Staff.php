@@ -6,6 +6,7 @@ use App\Enums\Gender;
 use App\Enums\StaffRoleLabel;
 use App\Enums\StaffStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Staff extends Model
@@ -24,6 +25,7 @@ class Staff extends Model
         'fixed_salary_usd',
         'role_label',
         'status',
+        'checkin_token',
     ];
 
     protected function casts(): array
@@ -38,9 +40,48 @@ class Staff extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (Staff $staff) {
+            if (blank($staff->checkin_token)) {
+                $staff->checkin_token = static::generateCheckinToken();
+            }
+        });
+    }
+
+    public static function generateCheckinToken(): string
+    {
+        return \Illuminate\Support\Str::random(48);
+    }
+
+    public function checkinUrl(): string
+    {
+        return route('staff-checkin.show', ['token' => $this->checkin_token]);
+    }
+
+    public function regenerateCheckinToken(): void
+    {
+        $this->forceFill(['checkin_token' => static::generateCheckinToken()])->save();
+    }
+
     public function user(): HasOne
     {
         return $this->hasOne(User::class, 'staff_id');
+    }
+
+    public function payrollItems(): HasMany
+    {
+        return $this->hasMany(PayrollItem::class);
+    }
+
+    public function attendanceRecords(): HasMany
+    {
+        return $this->hasMany(StaffAttendanceRecord::class);
+    }
+
+    public function webauthnCredentials(): HasMany
+    {
+        return $this->hasMany(StaffWebauthnCredential::class);
     }
 
     public function initials(): string

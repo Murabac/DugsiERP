@@ -67,6 +67,11 @@ class User extends Authenticatable
         return $this->role === UserRole::Teacher;
     }
 
+    public function isFinance(): bool
+    {
+        return $this->role === UserRole::Finance;
+    }
+
     /**
      * Class IDs this teacher appears on in the timetable for an academic year.
      *
@@ -145,7 +150,7 @@ class User extends Authenticatable
 
     public function canViewStudent(Student $student): bool
     {
-        if ($this->isAdmin()) {
+        if ($this->isAdmin() || $this->isFinance()) {
             return true;
         }
 

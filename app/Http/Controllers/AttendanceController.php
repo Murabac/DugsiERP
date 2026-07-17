@@ -149,6 +149,7 @@ class AttendanceController extends Controller
 
                 if ($sendSms && $status === AttendanceStatus::Absent) {
                     $student = $enrollments->get($studentId)->student;
+                    $record->setRelation('schoolClass', $schoolClass);
                     if (AbsenceSmsStub::log($student, $record, $student->primaryGuardian?->phone)) {
                         $smsCount++;
                     }
@@ -158,9 +159,9 @@ class AttendanceController extends Controller
 
         $message = 'Attendance saved for '.$schoolClass->displayName().' on '.$date->format('j F Y').'.';
         if ($sendSms && $smsCount > 0) {
-            $message .= ' '.$smsCount.' absence SMS logged for Week 9 delivery.';
+            $message .= ' '.$smsCount.' absence SMS attempted via notification service.';
         } elseif ($sendSms && $smsCount === 0) {
-            $message .= ' No new absence SMS to log.';
+            $message .= ' No new absence SMS to send.';
         }
 
         return redirect()

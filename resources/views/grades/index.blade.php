@@ -8,34 +8,28 @@
 @endphp
 
 <div class="space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">Grades</h2>
-            <p class="mt-0.5 text-xs text-slate-500">
-                Enter scores · teachers can edit for {{ $gradeEditWindowDays }} day{{ $gradeEditWindowDays === 1 ? '' : 's' }} after first save
-                · {{ $academicYear }}
-            </p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            <a href="{{ route('grades.boundaries') }}"
-                class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Boundaries
-            </a>
+    <x-section-header
+        title="Grades"
+        :sub="'Enter scores · teachers can edit for '.$gradeEditWindowDays.' day'.($gradeEditWindowDays === 1 ? '' : 's').' after first save · '.$academicYear"
+    >
+        <x-slot:action>
+            @if (auth()->user()?->isAdmin())
+                <x-btn variant="secondary" href="{{ route('grades.boundaries') }}">Boundaries</x-btn>
+            @endif
             @if ($canGenerateReports)
-                <a href="{{ route('grades.report', array_filter([
+                <x-btn variant="secondary" :href="route('grades.report', array_filter([
                         'class' => $canGenerateReportForClass ? $schoolClass?->id : null,
                         'term' => $term->value,
-                    ])) }}"
-                    class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    Student Report
-                </a>
+                    ]))">Student Report</x-btn>
             @endif
-        </div>
-    </div>
+        </x-slot:action>
+    </x-section-header>
 
     <div class="flex gap-1 border-b border-slate-200 text-sm">
         <span class="border-b-2 border-dugsi-primary px-3 py-2 font-semibold text-dugsi-primary">Grade Entry</span>
-        <a href="{{ route('grades.boundaries') }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Boundaries</a>
+        @if (auth()->user()?->isAdmin())
+            <a href="{{ route('grades.boundaries') }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Boundaries</a>
+        @endif
         @if ($canGenerateReports)
             <a href="{{ route('grades.report', array_filter([
                     'class' => $canGenerateReportForClass ? $schoolClass?->id : null,
@@ -100,15 +94,18 @@
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-700">
                             {{ $schoolClass->displayName() }} — {{ $subject->name }} · {{ $term->label() }}
                         </h3>
-                        @if ($classAverage !== null)
-                            <div class="text-xs text-slate-500">
-                                Class average:
-                                <span class="font-semibold text-slate-800">{{ number_format($classAverage, 1) }}%</span>
-                                @if ($classAverageLetter)
-                                    <span class="ml-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold {{ $classAverageLetter->badgeClass() }}">{{ $classAverageLetter->value }}</span>
-                                @endif
-                            </div>
-                        @endif
+                        <div class="flex flex-wrap items-center gap-3">
+                            @if ($classAverage !== null)
+                                <div class="text-xs text-slate-500">
+                                    Class average:
+                                    <span class="font-semibold text-slate-800">{{ number_format($classAverage, 1) }}%</span>
+                                    @if ($classAverageLetter)
+                                        <span class="ml-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold {{ $classAverageLetter->badgeClass() }}">{{ $classAverageLetter->value }}</span>
+                                    @endif
+                                </div>
+                            @endif
+                            <x-btn type="submit" size="sm">Save Grades</x-btn>
+                        </div>
                     </div>
 
                     <div class="overflow-x-auto">
@@ -229,6 +226,20 @@
                                     </tr>
                                 @endforeach
                             </tbody>
+                            @if ($classAverage !== null)
+                                <tfoot>
+                                    <tr class="border-t-2 border-slate-200 bg-slate-50">
+                                        <td colspan="2" class="px-4 py-2.5 text-sm font-semibold text-slate-700">Class Average</td>
+                                        <td class="px-4 py-2.5 font-bold text-slate-900">{{ number_format($classAverage, 1) }}%</td>
+                                        <td class="px-4 py-2.5">
+                                            @if ($classAverageLetter)
+                                                <span class="inline-flex rounded px-1.5 py-0.5 text-xs font-bold {{ $classAverageLetter->badgeClass() }}">{{ $classAverageLetter->value }}</span>
+                                            @endif
+                                        </td>
+                                        <td colspan="{{ $canViewEditHistory ? 3 : 2 }}"></td>
+                                    </tr>
+                                </tfoot>
+                            @endif
                         </table>
                     </div>
 
@@ -240,9 +251,7 @@
                                 Changing an existing score or remarks requires a note (why). History shows who edited and their reason.
                             @endunless
                         </p>
-                        <button type="submit" class="rounded-md bg-dugsi-primary px-4 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
-                            Save Grades
-                        </button>
+                        <x-btn type="submit">Save Grades</x-btn>
                     </div>
                 </div>
             </form>

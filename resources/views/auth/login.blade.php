@@ -5,17 +5,17 @@
 @section('content')
 <div class="flex min-h-screen items-center justify-center bg-dugsi-sidebar px-4">
     <div class="w-full max-w-sm">
-        <div class="mb-6 text-center">
-            <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500">
-                <x-icon name="graduation-cap" :size="28" class="text-white" />
+        <div class="mb-5 text-center">
+            <div class="mx-auto mb-2.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500">
+                <x-icon name="graduation-cap" :size="24" class="text-white" />
             </div>
-            <h1 class="text-3xl font-bold tracking-tight text-white">Dugsi ERP</h1>
+            <h1 class="text-2xl font-bold tracking-tight text-white">Dugsi ERP</h1>
             <p class="mt-1 text-sm text-blue-300/70">School Management System</p>
             <p class="mt-0.5 text-xs text-blue-300/50">Qudus · Somaliland</p>
         </div>
 
-        <div class="rounded-xl bg-white p-6 shadow-2xl">
-            <form method="POST" action="{{ route('login') }}" class="space-y-3.5">
+        <div class="rounded-xl bg-white p-5 shadow-2xl">
+            <form method="POST" action="{{ route('login') }}" class="space-y-3">
                 @csrf
 
                 @if ($errors->any())
@@ -47,7 +47,6 @@
                         id="password"
                         name="password"
                         type="password"
-                        value="password"
                         autocomplete="current-password"
                         required
                         class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-dugsi-primary"

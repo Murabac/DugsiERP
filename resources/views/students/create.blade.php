@@ -137,6 +137,14 @@
                             @endforeach
                         </select>
                     </div>
+                    <div class="sm:col-span-2">
+                        <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                            <input type="checkbox" name="need_based_discount" value="1" @checked(old('need_based_discount'))
+                                class="rounded border-slate-300 text-dugsi-primary focus:ring-dugsi-primary">
+                            Need-based fee discount
+                        </label>
+                        <p class="mt-1 text-[11px] text-slate-400">Uses the need-based % from Settings → School (same monthly fee for all classes).</p>
+                    </div>
                 </div>
             </div>
 

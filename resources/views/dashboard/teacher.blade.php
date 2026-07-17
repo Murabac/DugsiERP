@@ -4,10 +4,10 @@
 
 @section('content')
 <div class="space-y-4">
-    <div>
-        <h2 class="text-base font-semibold text-slate-900">Good {{ now()->hour < 12 ? 'morning' : (now()->hour < 17 ? 'afternoon' : 'evening') }}, {{ explode(' ', $user->name)[0] }}</h2>
-        <p class="mt-0.5 text-xs text-slate-500">{{ now()->format('l, j F Y') }} · Academic Year {{ $academicYear }}</p>
-    </div>
+    <x-section-header
+        :title="'Good '.(now()->hour < 12 ? 'morning' : (now()->hour < 17 ? 'afternoon' : 'evening')).', '.explode(' ', $user->name)[0]"
+        :sub="now()->format('l, j F Y').' · Academic Year '.$academicYear"
+    />
 
     @unless ($hasStaffLink)
         <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -16,19 +16,14 @@
     @endunless
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        @foreach ($stats as $stat)
-            <div class="rounded-lg border border-slate-200 bg-white p-4">
-                <div class="flex items-start justify-between gap-2">
-                    <div class="min-w-0">
-                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{{ $stat['label'] }}</div>
-                        <div class="mt-1 text-2xl font-bold {{ $stat['accent'] ? 'text-dugsi-primary' : 'text-slate-900' }}">{{ $stat['value'] }}</div>
-                        <div class="mt-0.5 text-xs text-slate-400">{{ $stat['sub'] }}</div>
-                    </div>
-                    <div class="rounded-md {{ $stat['accent'] ? 'bg-blue-50 text-dugsi-primary' : 'bg-slate-50 text-slate-500' }} p-2">
-                        <x-icon :name="$stat['icon']" :size="17" />
-                    </div>
-                </div>
-            </div>
+        @foreach ($stats as $i => $stat)
+            <x-stat-card
+                :label="$stat['label']"
+                :value="$stat['value']"
+                :sub="$stat['sub']"
+                :icon="$stat['icon']"
+                :accent="$i === 0 || !empty($stat['accent'])"
+            />
         @endforeach
     </div>
 
@@ -80,10 +75,10 @@
                     </div>
                 @endif
             </div>
-            <a href="{{ route('attendance.index') }}" class="flex w-full items-center justify-center gap-2 rounded-lg bg-dugsi-primary py-3 text-sm font-semibold text-white transition-colors hover:bg-[#162d56]">
+            <x-btn href="{{ route('attendance.index') }}" class="w-full py-3">
                 <x-icon name="check-circle" :size="15" />
                 Mark Attendance Now
-            </a>
+            </x-btn>
         </div>
     </div>
 </div>

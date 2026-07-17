@@ -125,7 +125,8 @@ class DashboardTest extends TestCase
             ->assertSee('Enrolled Students')
             ->assertViewHas('stats', fn ($stats) => $stats[0]['value'] === '1' && $stats[0]['label'] === 'Enrolled Students')
             ->assertSee('Active enrollments in '.$year, false)
-            ->assertSee('Fee module arrives in Week 7');
+            ->assertSee('Fees Collected')
+            ->assertSee('$0.00');
     }
 
     public function test_teacher_dashboard_shows_timetable_sections(): void

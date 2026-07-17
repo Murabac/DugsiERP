@@ -8,6 +8,7 @@ enum StaffRoleLabel: string
     case Admin = 'admin';
     case Finance = 'finance';
     case Librarian = 'librarian';
+    case Driver = 'driver';
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum StaffRoleLabel: string
             self::Admin => 'Admin',
             self::Finance => 'Finance',
             self::Librarian => 'Librarian',
+            self::Driver => 'Driver',
         };
     }
 
@@ -25,7 +27,7 @@ enum StaffRoleLabel: string
             self::Teacher => UserRole::Teacher,
             self::Admin => UserRole::Admin,
             self::Finance => UserRole::Finance,
-            self::Librarian => null,
+            self::Librarian, self::Driver => null,
         };
     }
 }

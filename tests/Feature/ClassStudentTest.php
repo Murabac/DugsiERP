@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AcademicTerm;
 use App\Enums\ClassStatus;
 use App\Enums\Gender;
 use App\Enums\GuardianRelationship;
@@ -12,6 +13,7 @@ use App\Enums\UserRole;
 use App\Enums\WaitlistStatus;
 use App\Models\ClassWaitlist;
 use App\Models\Enrollment;
+use App\Models\Grade;
 use App\Models\Guardian;
 use App\Models\SchoolClass;
 use App\Models\Staff;
@@ -35,10 +37,14 @@ class ClassStudentTest extends TestCase
         $this->actingAs($admin)
             ->post(route('classes.store'), [
                 'form_level' => 1,
-                'section' => 'A',
                 'academic_year' => '2024-25',
-                'capacity' => 30,
-                'room' => 'R-1A',
+                'sections' => [
+                    [
+                        'section' => 'A',
+                        'capacity' => 30,
+                        'room' => 'R-1A',
+                    ],
+                ],
             ])
             ->assertRedirect(route('classes.manage'));
 
@@ -49,6 +55,27 @@ class ClassStudentTest extends TestCase
             'status' => ClassStatus::Active->value,
             'room' => 'R-1A',
         ]);
+    }
+
+    public function test_admin_can_create_multiple_sections_at_once(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+
+        $this->actingAs($admin)
+            ->post(route('classes.store'), [
+                'form_level' => 2,
+                'academic_year' => AcademicYear::current(),
+                'sections' => [
+                    ['section' => 'A', 'capacity' => 30, 'room' => 'R-2A'],
+                    ['section' => 'B', 'capacity' => 28, 'room' => 'R-2B'],
+                    ['section' => 'C', 'capacity' => 25, 'room' => 'R-2C'],
+                ],
+            ])
+            ->assertRedirect(route('classes.manage'));
+
+        $this->assertDatabaseHas('classes', ['form_level' => 2, 'section' => 'A', 'room' => 'R-2A']);
+        $this->assertDatabaseHas('classes', ['form_level' => 2, 'section' => 'B', 'room' => 'R-2B']);
+        $this->assertDatabaseHas('classes', ['form_level' => 2, 'section' => 'C', 'room' => 'R-2C']);
     }
 
     public function test_teacher_cannot_manage_classes(): void
@@ -252,6 +279,7 @@ class ClassStudentTest extends TestCase
                 'section' => 'B',
                 'academic_year' => AcademicYear::current(),
                 'capacity' => 2,
+                'room' => $class->room ?? 'R-2B',
             ])
             ->assertRedirect(route('classes.roster', $class));
 
@@ -302,6 +330,7 @@ class ClassStudentTest extends TestCase
                 'section' => 'C',
                 'academic_year' => '2023-24',
                 'capacity' => 30,
+                'room' => $class->room ?? 'R-1C',
             ])
             ->assertSessionHasErrors('academic_year');
 
@@ -636,5 +665,243 @@ class ClassStudentTest extends TestCase
             ->assertOk()
             ->assertSee('Taught Child')
             ->assertDontSee('Other Child');
+    }
+
+    public function test_admin_can_edit_student_and_guardian(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'A',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'room' => 'R-1A',
+            'status' => ClassStatus::Active,
+        ]);
+        $otherClass = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'B',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'room' => 'R-1B',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $student = Student::query()->create([
+            'student_code' => 'STU-EDIT',
+            'full_name' => 'Original Name',
+            'dob' => AcademicYear::defaultDob(),
+            'gender' => Gender::Female,
+            'city' => 'Hargeisa',
+            'status' => StudentStatus::Active,
+        ]);
+
+        Enrollment::query()->create([
+            'student_id' => $student->id,
+            'class_id' => $class->id,
+            'academic_year' => AcademicYear::current(),
+            'roll_number' => 1,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+        ]);
+
+        $guardian = Guardian::query()->create([
+            'student_id' => $student->id,
+            'full_name' => 'Original Guardian',
+            'phone' => '+252634000001',
+            'relationship' => GuardianRelationship::Father,
+            'is_primary' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('students.edit', $student))
+            ->assertOk()
+            ->assertSee('Edit Student');
+
+        $this->actingAs($admin)
+            ->put(route('students.update', $student), [
+                'full_name' => 'Updated Student Name',
+                'dob' => AcademicYear::defaultDob(),
+                'gender' => Gender::Female->value,
+                'city' => 'Berbera',
+                'class_id' => $otherClass->id,
+                'enrollment_date' => now()->toDateString(),
+                'status' => StudentStatus::Active->value,
+            ])
+            ->assertRedirect(route('students.show', $student));
+
+        $this->assertDatabaseHas('students', [
+            'id' => $student->id,
+            'full_name' => 'Updated Student Name',
+            'city' => 'Berbera',
+        ]);
+        $this->assertDatabaseHas('enrollments', [
+            'student_id' => $student->id,
+            'class_id' => $otherClass->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('students.guardians.update', [$student, $guardian]), [
+                'full_name' => 'Updated Guardian',
+                'phone' => '+252634000099',
+                'relationship' => GuardianRelationship::Mother->value,
+                'is_primary' => '1',
+            ])
+            ->assertRedirect(route('students.show', ['student' => $student, 'tab' => 'guardians']));
+
+        $this->assertDatabaseHas('guardians', [
+            'id' => $guardian->id,
+            'full_name' => 'Updated Guardian',
+            'phone' => '+252634000099',
+            'relationship' => GuardianRelationship::Mother->value,
+        ]);
+    }
+
+    public function test_student_class_transfer_moves_open_invoices_and_grades(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $year = AcademicYear::current();
+        $from = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'A',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-1A',
+            'status' => ClassStatus::Active,
+        ]);
+        $to = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'B',
+            'academic_year' => $year,
+            'capacity' => 30,
+            'room' => 'R-1B',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $student = Student::query()->create([
+            'student_code' => 'STU-XFER',
+            'full_name' => 'Transfer Student',
+            'dob' => AcademicYear::defaultDob(),
+            'gender' => Gender::Male,
+            'status' => StudentStatus::Active,
+        ]);
+        Enrollment::query()->create([
+            'student_id' => $student->id,
+            'class_id' => $from->id,
+            'academic_year' => $year,
+            'roll_number' => 1,
+            'enrollment_date' => now()->toDateString(),
+            'status' => StudentStatus::Active,
+        ]);
+        Guardian::query()->create([
+            'student_id' => $student->id,
+            'full_name' => 'Transfer Parent',
+            'phone' => '+252634000777',
+            'relationship' => GuardianRelationship::Father,
+            'is_primary' => true,
+        ]);
+
+        \App\Models\SchoolSetting::set('monthly_fee_usd', '45');
+        $invoice = \App\Models\Invoice::query()->create([
+            'invoice_number' => 'INV-XFER-1',
+            'student_id' => $student->id,
+            'class_id' => $from->id,
+            'academic_year' => $year,
+            'billing_month' => now()->startOfMonth()->toDateString(),
+            'base_amount' => 45,
+            'discount_applied' => 0,
+            'discount_reason' => null,
+            'amount_due' => 45,
+            'amount_paid' => 0,
+            'status' => \App\Enums\InvoiceStatus::Unpaid,
+        ]);
+        $subject = Subject::query()->create(['name' => 'Mathematics', 'sort_order' => 1]);
+        Grade::query()->create([
+            'student_id' => $student->id,
+            'class_id' => $from->id,
+            'subject_id' => $subject->id,
+            'term' => AcademicTerm::Term1,
+            'academic_year' => $year,
+            'score_percent' => 80,
+            'letter_grade' => \App\Enums\LetterGrade::B,
+            'entered_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('students.update', $student), [
+                'full_name' => $student->full_name,
+                'dob' => $student->dob->format('Y-m-d'),
+                'gender' => $student->gender->value,
+                'class_id' => $to->id,
+                'enrollment_date' => now()->toDateString(),
+                'status' => StudentStatus::Active->value,
+            ])
+            ->assertRedirect(route('students.show', $student));
+
+        $this->assertDatabaseHas('invoices', [
+            'id' => $invoice->id,
+            'class_id' => $to->id,
+        ]);
+        $this->assertDatabaseHas('grades', [
+            'student_id' => $student->id,
+            'class_id' => $to->id,
+            'subject_id' => $subject->id,
+        ]);
+    }
+
+    public function test_cannot_destroy_last_guardian(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $student = Student::query()->create([
+            'student_code' => 'STU-G1',
+            'full_name' => 'Only One Guardian',
+            'dob' => AcademicYear::defaultDob(),
+            'gender' => Gender::Female,
+            'status' => StudentStatus::Active,
+        ]);
+        $guardian = Guardian::query()->create([
+            'student_id' => $student->id,
+            'full_name' => 'Solo Guardian',
+            'phone' => '+252634000888',
+            'relationship' => GuardianRelationship::Mother,
+            'is_primary' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('students.show', ['student' => $student, 'tab' => 'guardians']))
+            ->delete(route('students.guardians.destroy', [$student, $guardian]))
+            ->assertRedirect(route('students.show', ['student' => $student, 'tab' => 'guardians']))
+            ->assertSessionHasErrors('guardian');
+
+        $this->assertDatabaseHas('guardians', ['id' => $guardian->id]);
+    }
+
+    public function test_admin_can_update_class_room(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 3,
+            'section' => 'A',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'room' => 'R-3A',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('classes.update', $class), [
+                'form_level' => 3,
+                'section' => 'A',
+                'academic_year' => AcademicYear::current(),
+                'capacity' => 32,
+                'room' => 'R-3A-NEW',
+            ])
+            ->assertRedirect(route('classes.manage'));
+
+        $this->assertDatabaseHas('classes', [
+            'id' => $class->id,
+            'capacity' => 32,
+            'room' => 'R-3A-NEW',
+        ]);
     }
 }

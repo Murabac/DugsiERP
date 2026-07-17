@@ -71,7 +71,7 @@ class AttendanceTest extends TestCase
         return compact('admin', 'class', 'student', 'enrollment');
     }
 
-    public function test_admin_can_mark_attendance_and_stub_absence_sms(): void
+    public function test_admin_can_mark_attendance_and_send_absence_sms(): void
     {
         ['admin' => $admin, 'class' => $class, 'student' => $student] = $this->seedClassWithStudent();
         $date = '2026-07-15'; // Wednesday
@@ -110,10 +110,12 @@ class AttendanceTest extends TestCase
             'type' => NotificationType::AbsenceAlert->value,
             'related_student_id' => $student->id,
             'recipient_phone' => '+252634001234',
-            'status' => NotificationStatus::Stubbed->value,
+            'status' => NotificationStatus::Failed->value,
         ]);
 
-        $this->assertStringContainsString('Faadumo Xasan Warsame', NotificationLog::query()->first()->message_body);
+        $log = NotificationLog::query()->first();
+        $this->assertStringContainsString('Faadumo Xasan Warsame', $log->message_body);
+        $this->assertStringContainsString('credentials', strtolower((string) $log->error));
     }
 
     public function test_attendance_history_and_print_views(): void

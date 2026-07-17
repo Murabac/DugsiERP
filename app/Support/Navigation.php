@@ -30,8 +30,17 @@ class Navigation
             ['type' => 'item', 'label' => 'Classes', 'icon' => 'layers', 'route' => 'classes.index'],
             ['type' => 'item', 'label' => 'Staff', 'icon' => 'briefcase', 'route' => 'staff.index'],
             ['type' => 'item', 'label' => 'Timetable', 'icon' => 'calendar', 'route' => 'timetable.index'],
-            ['type' => 'item', 'label' => 'Attendance', 'icon' => 'check-circle', 'route' => 'attendance.index'],
+            [
+                'type' => 'group',
+                'label' => 'Attendance',
+                'icon' => 'check-circle',
+                'children' => [
+                    ['label' => 'Students', 'route' => 'attendance.index'],
+                    ['label' => 'Staff', 'route' => 'staff-attendance.index'],
+                ],
+            ],
             ['type' => 'item', 'label' => 'Grades', 'icon' => 'graduation-cap', 'route' => 'grades.index'],
+            ['type' => 'item', 'label' => 'Transport', 'icon' => 'bus', 'route' => 'transport.index'],
             [
                 'type' => 'group',
                 'label' => 'Finance',
@@ -39,8 +48,6 @@ class Navigation
                 'children' => [
                     ['label' => 'Fees Dashboard', 'route' => 'finance.fees-dashboard'],
                     ['label' => 'Fee Collection', 'route' => 'finance.fee-collection'],
-                    ['label' => 'Expenses', 'route' => 'finance.expenses'],
-                    ['label' => 'Accounting', 'route' => 'finance.accounting'],
                 ],
             ],
             ['type' => 'item', 'label' => 'Payroll', 'icon' => 'credit-card', 'route' => 'payroll.index'],
@@ -58,6 +65,7 @@ class Navigation
     {
         return [
             ['type' => 'item', 'label' => 'Dashboard', 'icon' => 'home', 'route' => 'dashboard'],
+            ['type' => 'item', 'label' => 'Transport', 'icon' => 'bus', 'route' => 'transport.index'],
             [
                 'type' => 'group',
                 'label' => 'Finance',
@@ -65,8 +73,6 @@ class Navigation
                 'children' => [
                     ['label' => 'Fees Dashboard', 'route' => 'finance.fees-dashboard'],
                     ['label' => 'Fee Collection', 'route' => 'finance.fee-collection'],
-                    ['label' => 'Expenses', 'route' => 'finance.expenses'],
-                    ['label' => 'Accounting', 'route' => 'finance.accounting'],
                 ],
             ],
             ['type' => 'item', 'label' => 'Payroll', 'icon' => 'credit-card', 'route' => 'payroll.index'],

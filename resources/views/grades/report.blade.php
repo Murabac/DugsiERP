@@ -4,28 +4,22 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">Student Grade Report</h2>
-            <p class="mt-0.5 text-xs text-slate-500">Per-student term report with class rank · headmasters &amp; admins only · {{ $academicYear }}</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
+    <x-section-header title="Student Grade Report" :sub="'Per-student term report with class rank · headmasters & admins only · '.$academicYear">
+        <x-slot:action>
             @if ($schoolClass && $student)
-                <a href="{{ route('grades.print', ['class' => $schoolClass->id, 'student' => $student->id, 'term' => $term->value]) }}" target="_blank"
-                    class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    <x-icon name="file-text" :size="14" /> Print Report Card
-                </a>
+                <x-btn variant="secondary" :href="route('grades.print', ['class' => $schoolClass->id, 'student' => $student->id, 'term' => $term->value])" target="_blank" rel="noopener">
+                    <x-icon name="printer" :size="14" /> Print Report Card
+                </x-btn>
             @endif
-            <a href="{{ route('grades.index', array_filter(['class' => $schoolClass?->id, 'term' => $term->value])) }}"
-                class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Grade Entry
-            </a>
-        </div>
-    </div>
+            <x-btn variant="secondary" :href="route('grades.index', array_filter(['class' => $schoolClass?->id, 'term' => $term->value]))">Grade Entry</x-btn>
+        </x-slot:action>
+    </x-section-header>
 
     <div class="flex gap-1 border-b border-slate-200 text-sm">
         <a href="{{ route('grades.index', array_filter(['class' => $schoolClass?->id, 'term' => $term->value])) }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Entry</a>
-        <a href="{{ route('grades.boundaries') }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Boundaries</a>
+        @if (auth()->user()?->isAdmin())
+            <a href="{{ route('grades.boundaries') }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Boundaries</a>
+        @endif
         <span class="border-b-2 border-dugsi-primary px-3 py-2 font-semibold text-dugsi-primary">Student Report</span>
     </div>
 
@@ -86,18 +80,26 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-3 border-b border-slate-100 px-4 py-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div class="grid grid-cols-1 gap-x-8 gap-y-3 border-b border-slate-100 px-4 py-4 text-sm sm:grid-cols-2">
                     <div>
                         <div class="text-[11px] uppercase tracking-wider text-slate-400">Student</div>
                         <div class="font-medium text-slate-900">{{ $student->full_name }}</div>
                     </div>
                     <div>
-                        <div class="text-[11px] uppercase tracking-wider text-slate-400">ID / Class</div>
-                        <div class="font-medium text-slate-900">{{ $student->student_code }} · {{ $schoolClass->displayName() }}</div>
+                        <div class="text-[11px] uppercase tracking-wider text-slate-400">Student ID</div>
+                        <div class="font-medium text-slate-900">{{ $student->student_code }}</div>
+                    </div>
+                    <div>
+                        <div class="text-[11px] uppercase tracking-wider text-slate-400">Class</div>
+                        <div class="font-medium text-slate-900">{{ $schoolClass->displayName() }}</div>
                     </div>
                     <div>
                         <div class="text-[11px] uppercase tracking-wider text-slate-400">Guardian</div>
                         <div class="font-medium text-slate-900">{{ $guardian?->full_name ?? '—' }}</div>
+                    </div>
+                    <div>
+                        <div class="text-[11px] uppercase tracking-wider text-slate-400">Term / Year</div>
+                        <div class="font-medium text-slate-900">{{ $term->label() }} · {{ $academicYear }}</div>
                     </div>
                     <div>
                         <div class="text-[11px] uppercase tracking-wider text-slate-400">Attendance</div>
@@ -153,6 +155,22 @@
                             <span class="ml-1 text-slate-400">—</span>
                         @endif
                     </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 border-t border-slate-100 px-4 py-6 sm:grid-cols-2">
+                    <div>
+                        <div class="mb-8 border-b border-slate-300"></div>
+                        <div class="text-xs font-medium text-slate-700">Class Teacher</div>
+                        <div class="text-[11px] text-slate-400">Signature &amp; date</div>
+                    </div>
+                    <div>
+                        <div class="mb-8 border-b border-slate-300"></div>
+                        <div class="text-xs font-medium text-slate-700">Headmaster</div>
+                        <div class="text-[11px] text-slate-400">Signature &amp; date</div>
+                    </div>
+                </div>
+                <div class="border-t border-slate-100 px-4 py-3 text-center text-[11px] text-slate-400">
+                    Official grade report · {{ $schoolName }} · {{ $academicYear }}
                 </div>
             </div>
         @endif

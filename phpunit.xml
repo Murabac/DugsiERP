@@ -32,5 +32,12 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="SMS_DRIVER" value="auto"/>
+        <env name="TEXTBEE_API_KEY" value=""/>
+        <env name="TEXTBEE_DEVICE_ID" value=""/>
+        <env name="TELESOM_SMS_USERNAME" value=""/>
+        <env name="TELESOM_SMS_PASSWORD" value=""/>
+        <env name="TELESOM_SMS_SENDER" value=""/>
+        <env name="TELESOM_SMS_SECRET" value=""/>
     </php>
 </phpunit>

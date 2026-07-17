@@ -29,6 +29,26 @@ class AcademicYear
     }
 
     /**
+     * First and last billable months for the current academic year (through today).
+     *
+     * @return array{min: string, max: string} Y-m bounds for fee collection
+     */
+    public static function feeMonthBounds(?CarbonInterface $date = null): array
+    {
+        $date ??= now();
+        $start = \Illuminate\Support\Carbon::create(self::startYear($date), 9, 1)->startOfMonth();
+        $end = \Illuminate\Support\Carbon::parse($date)->startOfMonth();
+        if ($end->lt($start)) {
+            $end = $start->copy();
+        }
+
+        return [
+            'min' => $start->format('Y-m'),
+            'max' => $end->format('Y-m'),
+        ];
+    }
+
+    /**
      * Typical secondary birth-year window (~ages 12–19) relative to the school year.
      *
      * @return array{min: int, max: int}

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\Gender;
 use App\Enums\StudentStatus;
 use App\Enums\WaitlistStatus;
+use App\Support\AcademicYear;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -21,6 +22,7 @@ class Student extends Model
         'city',
         'previous_school',
         'status',
+        'need_based_discount',
     ];
 
     protected function casts(): array
@@ -29,6 +31,7 @@ class Student extends Model
             'dob' => 'date',
             'gender' => Gender::class,
             'status' => StudentStatus::class,
+            'need_based_discount' => 'boolean',
         ];
     }
 
@@ -61,12 +64,47 @@ class Student extends Model
 
     public function currentEnrollment(): HasOne
     {
-        return $this->hasOne(Enrollment::class)->latestOfMany();
+        return $this->hasOne(Enrollment::class)->ofMany(
+            ['id' => 'max'],
+            function ($query) {
+                $query->where('academic_year', AcademicYear::current())
+                    ->whereIn('status', [
+                        StudentStatus::Active->value,
+                        StudentStatus::Suspended->value,
+                    ]);
+            }
+        );
     }
 
     public function attendanceRecords(): HasMany
     {
         return $this->hasMany(AttendanceRecord::class);
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    public function transportAssignments(): HasMany
+    {
+        return $this->hasMany(TransportAssignment::class);
+    }
+
+    public function activeTransportAssignment(): HasOne
+    {
+        return $this->hasOne(TransportAssignment::class)->ofMany(
+            ['id' => 'max'],
+            function ($query) {
+                $query->where('academic_year', AcademicYear::current())
+                    ->where('status', \App\Enums\TransportAssignmentStatus::Active->value);
+            }
+        );
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
     }
 
     public function initials(): string

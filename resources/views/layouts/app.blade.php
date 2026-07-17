@@ -20,9 +20,15 @@
             <main class="flex-1 overflow-y-auto p-3 sm:p-5">
                 @if ($errors->any())
                     <div class="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" data-dugsi-flash-error>
-                        {{ $errors->first() }}
-                        @if ($errors->count() > 1)
-                            <span class="text-red-600">(+{{ $errors->count() - 1 }} more)</span>
+                        @if ($errors->count() === 1)
+                            {{ $errors->first() }}
+                        @else
+                            <div class="font-medium">Please fix the following:</div>
+                            <ul class="mt-1 list-disc space-y-0.5 pl-4 text-xs">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
                         @endif
                     </div>
                 @endif

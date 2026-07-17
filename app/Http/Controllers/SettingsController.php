@@ -35,9 +35,14 @@ class SettingsController extends Controller
             })
             ->values();
 
+        $assignableLabels = array_map(
+            fn (UserRole $role) => $role->value,
+            $actor->assignableRoles()
+        );
+
         $unlinkedStaff = Staff::query()
             ->whereDoesntHave('user')
-            ->whereIn('role_label', ['teacher', 'admin', 'finance'])
+            ->whereIn('role_label', $assignableLabels)
             ->orderBy('full_name')
             ->get();
 
@@ -53,6 +58,11 @@ class SettingsController extends Controller
                 'name' => \App\Models\SchoolSetting::schoolName(),
                 'location' => \App\Models\SchoolSetting::schoolLocation(),
                 'tagline' => \App\Models\SchoolSetting::schoolTagline(),
+            ],
+            'feeSettings' => \App\Models\SchoolSetting::feeSettings(),
+            'staffAttendanceSettings' => [
+                'allowed_cidrs' => \App\Models\SchoolSetting::staffAttendanceAllowedCidrs(),
+                'late_after' => \App\Models\SchoolSetting::staffAttendanceLateAfter(),
             ],
         ]);
     }
@@ -77,6 +87,71 @@ class SettingsController extends Controller
         return redirect()
             ->route('settings.index', ['tab' => 'school'])
             ->with('status', 'School profile updated. Printable documents will use the new name.');
+    }
+
+    public function updateFeeSettings(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $data = $request->validate([
+            'monthly_fee_usd' => ['required', 'numeric', 'min:0', 'max:99999.99'],
+            'transport_fee_usd' => ['required', 'numeric', 'min:0', 'max:99999.99'],
+            'sibling_discount_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'need_based_discount_percent' => ['required', 'integer', 'min:0', 'max:100'],
+        ]);
+
+        \App\Models\SchoolSetting::set('monthly_fee_usd', (string) round((float) $data['monthly_fee_usd'], 2));
+        \App\Models\SchoolSetting::set('transport_fee_usd', (string) round((float) $data['transport_fee_usd'], 2));
+        \App\Models\SchoolSetting::set('sibling_discount_percent', (string) (int) $data['sibling_discount_percent']);
+        \App\Models\SchoolSetting::set('need_based_discount_percent', (string) (int) $data['need_based_discount_percent']);
+
+        $revised = \App\Support\MonthlyInvoiceGenerator::recalculateUnpaid();
+
+        $message = 'Monthly fee settings updated. Transport fee applies only to students with an active bus assignment.';
+        if ($revised > 0) {
+            $message .= ' Revised '.$revised.' unpaid invoice'.($revised === 1 ? '' : 's').'.';
+        }
+
+        return redirect()
+            ->route('settings.index', ['tab' => 'school'])
+            ->with('status', $message);
+    }
+
+    public function updateStaffAttendance(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $data = $request->validate([
+            'staff_attendance_allowed_cidrs' => ['nullable', 'string', 'max:2000'],
+            'staff_attendance_late_after' => ['required', 'date_format:H:i'],
+        ]);
+
+        $cidrs = trim((string) ($data['staff_attendance_allowed_cidrs'] ?? ''));
+        foreach (preg_split('/[\s,;]+/', $cidrs) ?: [] as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            if (str_contains($part, '/')) {
+                [$ip, $mask] = explode('/', $part, 2);
+                if (! filter_var($ip, FILTER_VALIDATE_IP) || ! is_numeric($mask)) {
+                    return back()->withInput()->withErrors([
+                        'staff_attendance_allowed_cidrs' => "Invalid CIDR: {$part}",
+                    ]);
+                }
+            } elseif (! filter_var($part, FILTER_VALIDATE_IP)) {
+                return back()->withInput()->withErrors([
+                    'staff_attendance_allowed_cidrs' => "Invalid IP: {$part}",
+                ]);
+            }
+        }
+
+        \App\Models\SchoolSetting::set('staff_attendance_allowed_cidrs', $cidrs);
+        \App\Models\SchoolSetting::set('staff_attendance_late_after', $data['staff_attendance_late_after']);
+
+        return redirect()
+            ->route('settings.index', ['tab' => 'school'])
+            ->with('status', 'Staff attendance check-in settings saved.');
     }
 
     public function updateGradeEditWindow(Request $request): RedirectResponse

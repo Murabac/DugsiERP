@@ -4,23 +4,13 @@
 
 @section('content')
 <div class="space-y-4">
-    <div>
-        <h2 class="text-base font-semibold text-slate-900">Settings</h2>
-        <p class="mt-0.5 text-xs text-slate-500">Manage users, school profile, and academic configuration</p>
-    </div>
+    <x-section-header title="Settings" sub="Manage users, school profile, and academic configuration" />
 
-    <div class="mb-4 flex w-full max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 sm:w-fit">
-        @foreach ([
-            'users' => 'Users',
-            'school' => 'School Profile',
-            'academic' => 'Academic Setup',
-        ] as $key => $label)
-            <a href="{{ route('settings.index', ['tab' => $key]) }}"
-                class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors {{ $tab === $key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
-                {{ $label }}
-            </a>
-        @endforeach
-    </div>
+    <x-tabs :active="$tab" :tabs="[
+        ['key' => 'users', 'label' => 'Users', 'href' => route('settings.index', ['tab' => 'users'])],
+        ['key' => 'school', 'label' => 'School Profile', 'href' => route('settings.index', ['tab' => 'school'])],
+        ['key' => 'academic', 'label' => 'Academic Setup', 'href' => route('settings.index', ['tab' => 'academic'])],
+    ]" class="mb-4" />
 
     @if ($tab === 'users')
         <div class="space-y-4">
@@ -195,8 +185,104 @@
                         <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                     @enderror
                 </div>
+                <x-btn type="submit">Save School Profile</x-btn>
+            </form>
+
+            <div class="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
+                <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Letterhead preview</div>
+                <div class="mt-2 border-b-2 border-dugsi-primary pb-2">
+                    <div class="text-lg font-bold text-dugsi-primary">{{ $schoolProfile['name'] }}</div>
+                    <div class="text-xs text-slate-500">{{ trim(($schoolProfile['tagline'] ?? '').(($schoolProfile['tagline'] ?? '') && ($schoolProfile['location'] ?? '') ? ' · ' : '').($schoolProfile['location'] ?? '')) }}</div>
+                </div>
+                <p class="mt-2 text-[11px] text-slate-400">Appears on printable documents (not the Dugsi ERP product name).</p>
+            </div>
+        </div>
+
+        <div class="mt-4 max-w-xl rounded-lg border border-slate-200 bg-white p-5">
+            <h3 class="mb-2 text-xs font-semibold tracking-wider text-slate-700 uppercase">Monthly Fee</h3>
+            <p class="mb-4 text-sm text-slate-500">
+                One school-wide monthly amount for every class. Sibling and need-based discounts apply to individual students only (not different fees per form).
+            </p>
+            <form method="POST" action="{{ route('settings.fee-settings') }}" class="space-y-3">
+                @csrf
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Monthly fee (USD)</label>
+                    <div class="flex items-center gap-1">
+                        <span class="text-slate-400">$</span>
+                        <input type="number" name="monthly_fee_usd" step="0.01" min="0" max="99999.99" required
+                            value="{{ old('monthly_fee_usd', $feeSettings['monthly_fee_usd']) }}"
+                            class="w-32 rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                    </div>
+                    @error('monthly_fee_usd')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Transport fee (USD / month)</label>
+                    <div class="flex items-center gap-1">
+                        <span class="text-slate-400">$</span>
+                        <input type="number" name="transport_fee_usd" step="0.01" min="0" max="99999.99" required
+                            value="{{ old('transport_fee_usd', $feeSettings['transport_fee_usd'] ?? 15) }}"
+                            class="w-32 rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                    </div>
+                    <p class="mt-1 text-[11px] text-slate-400">Added to the tuition invoice for students with an active bus assignment. Discounts do not apply to transport.</p>
+                    @error('transport_fee_usd')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-700">Sibling discount %</label>
+                        <input type="number" name="sibling_discount_percent" min="0" max="100" required
+                            value="{{ old('sibling_discount_percent', $feeSettings['sibling_discount_percent']) }}"
+                            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                        <p class="mt-1 text-[11px] text-slate-400">2nd+ child with the same primary guardian phone</p>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-700">Need-based discount %</label>
+                        <input type="number" name="need_based_discount_percent" min="0" max="100" required
+                            value="{{ old('need_based_discount_percent', $feeSettings['need_based_discount_percent']) }}"
+                            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                        <p class="mt-1 text-[11px] text-slate-400">When the student has need-based assistance enabled</p>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400">If both discounts apply to a student, the larger percentage is used (not stacked).</p>
                 <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
-                    Save School Profile
+                    Save Fee Settings
+                </button>
+            </form>
+        </div>
+
+        <div class="mt-4 max-w-xl rounded-lg border border-slate-200 bg-white p-5">
+            <h3 class="mb-2 text-xs font-semibold tracking-wider text-slate-700 uppercase">Staff phone check-in</h3>
+            <p class="mb-4 text-sm text-slate-500">
+                Staff open a personal link on their phone and use fingerprint / Face ID.
+                Check-in only works when the phone is on school Wi‑Fi (matched by IP / CIDR below — browsers cannot read the Wi‑Fi name).
+            </p>
+            <form method="POST" action="{{ route('settings.staff-attendance') }}" class="space-y-3">
+                @csrf
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Allowed school IPs / CIDRs</label>
+                    <textarea name="staff_attendance_allowed_cidrs" rows="3"
+                        class="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary"
+                        placeholder="197.x.x.x&#10;192.168.1.0/24">{{ old('staff_attendance_allowed_cidrs', $staffAttendanceSettings['allowed_cidrs'] ?? '') }}</textarea>
+                    <p class="mt-1 text-[11px] text-slate-400">Comma or new-line separated. Leave empty only for local testing — production should list the school public IP and/or LAN range.</p>
+                    @error('staff_attendance_allowed_cidrs')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Late after</label>
+                    <input type="time" name="staff_attendance_late_after" required
+                        value="{{ old('staff_attendance_late_after', $staffAttendanceSettings['late_after'] ?? '08:00') }}"
+                        class="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <p class="mt-1 text-[11px] text-slate-400">Phone check-ins after this time are marked Late.</p>
+                    @error('staff_attendance_late_after')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
+                    Save check-in settings
                 </button>
             </form>
         </div>
@@ -227,7 +313,7 @@
                                 <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                             @enderror
                         </div>
-                        <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
+                        <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white">
                             Save Window
                         </button>
                     </form>
@@ -240,7 +326,7 @@
             </div>
 
             <div class="rounded-lg border border-slate-200 bg-white p-4">
-                <p class="text-sm text-slate-500">Class sections are managed under <a href="{{ route('classes.manage') }}" class="font-medium text-dugsi-primary hover:underline">Manage Classes</a>.</p>
+                <p class="text-sm text-slate-500">Class sections are managed under <a href="{{ route('classes.manage') }}" class="font-medium text-dugsi-primary hover:underline">Manage Classes</a>. Monthly fee is under the <a href="{{ route('settings.index', ['tab' => 'school']) }}" class="font-medium text-dugsi-primary hover:underline">School</a> tab.</p>
             </div>
         </div>
     @endif

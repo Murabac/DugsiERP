@@ -44,16 +44,16 @@
         }
         .header {
             display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 12px;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 4px;
             border-bottom: 1.5px solid #1e3a6e;
-            padding-bottom: 6px;
-            margin-bottom: 8px;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
         }
-        .header-left { min-width: 0; }
         .brand {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 700;
             color: #1e3a6e;
             line-height: 1.2;
@@ -63,7 +63,18 @@
             color: #64748b;
             margin-top: 1px;
         }
-        .header-right { text-align: right; flex-shrink: 0; }
+        .doc-pill {
+            display: inline-block;
+            margin-top: 4px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: #eff6ff;
+            color: #1e3a6e;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
         .doc-title {
             font-size: 13px;
             font-weight: 700;
@@ -166,26 +177,22 @@
 
     <div class="sheet">
         <div class="header">
-            <div class="header-left">
-                <div class="brand">{{ $schoolName }}</div>
-                <div class="sub">{{ $schoolLetterheadSub }}</div>
+            <div class="brand">{{ $schoolName }}</div>
+            <div class="sub">{{ $schoolLetterheadSub }}</div>
+            <div class="doc-pill">Attendance Register</div>
+            <div class="meta">
+                {{ $schoolClass->displayName() }}
+                · {{ $dateLabel }}
+                · {{ $academicYear }}
             </div>
-            <div class="header-right">
-                <div class="doc-title">Attendance Register</div>
-                <div class="meta">
-                    {{ $schoolClass->displayName() }}
-                    · {{ $dateLabel }}
-                    · {{ $academicYear }}
-                </div>
-                <div class="counts">
-                    Present {{ $counts['present'] }}
-                    · Late {{ $counts['late'] }}
-                    · Absent {{ $counts['absent'] }}
-                    · Suspended {{ $counts['suspended'] }}
-                    @if ($counts['unmarked'] > 0)
-                        · Unmarked {{ $counts['unmarked'] }}
-                    @endif
-                </div>
+            <div class="counts">
+                Present {{ $counts['present'] }}
+                · Late {{ $counts['late'] }}
+                · Absent {{ $counts['absent'] }}
+                · Suspended {{ $counts['suspended'] }}
+                @if ($counts['unmarked'] > 0)
+                    · Unmarked {{ $counts['unmarked'] }}
+                @endif
             </div>
         </div>
 

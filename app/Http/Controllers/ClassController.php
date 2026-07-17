@@ -15,6 +15,7 @@ use App\Support\AcademicYear;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -82,14 +83,96 @@ class ClassController extends Controller
             'totalCapacity' => $totalCapacity,
             'academicYear' => $currentYear,
             'academicYears' => array_values(array_unique([$currentYear, '2025-26', '2024-25', '2023-24'])),
+            'sectionLetters' => self::sectionLetters(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $letters = self::sectionLetters();
+
         $data = $request->validate([
             'form_level' => ['required', 'integer', 'between:1,4'],
-            'section' => ['required', 'string', 'max:8'],
+            'academic_year' => ['required', 'string', 'max:16'],
+            'sections' => ['required', 'array', 'min:1', 'max:'.count($letters)],
+            'sections.*.section' => ['required', 'string', Rule::in($letters)],
+            'sections.*.capacity' => ['required', 'integer', 'min:1', 'max:100'],
+            'sections.*.room' => ['required', 'string', 'max:32'],
+            'sections.*.homeroom_teacher_id' => ['nullable', 'integer', 'exists:staff,id'],
+        ]);
+
+        $formLevel = (int) $data['form_level'];
+        $academicYear = $data['academic_year'];
+        $normalized = [];
+        $seen = [];
+
+        foreach ($data['sections'] as $index => $row) {
+            $section = strtoupper(trim((string) $row['section']));
+            $room = trim((string) $row['room']);
+            $teacherId = $row['homeroom_teacher_id'] ?? null;
+            $teacherId = $teacherId !== null && $teacherId !== '' ? (int) $teacherId : null;
+
+            if ($section === '') {
+                return back()->withInput()->withErrors([
+                    "sections.{$index}.section" => 'Section is required.',
+                ]);
+            }
+
+            if (isset($seen[$section])) {
+                return back()->withInput()->withErrors([
+                    "sections.{$index}.section" => "Section {$section} is listed more than once.",
+                ]);
+            }
+            $seen[$section] = true;
+
+            if ($teacherId) {
+                $this->assertActiveTeacher($teacherId);
+            }
+
+            $exists = SchoolClass::query()
+                ->where('form_level', $formLevel)
+                ->where('section', $section)
+                ->where('academic_year', $academicYear)
+                ->exists();
+
+            if ($exists) {
+                return back()->withInput()->withErrors([
+                    "sections.{$index}.section" => "Form {$formLevel} Section {$section} already exists for {$academicYear}.",
+                ]);
+            }
+
+            $normalized[] = [
+                'form_level' => $formLevel,
+                'section' => $section,
+                'academic_year' => $academicYear,
+                'capacity' => (int) $row['capacity'],
+                'room' => $room,
+                'homeroom_teacher_id' => $teacherId,
+                'status' => ClassStatus::Active,
+            ];
+        }
+
+        DB::transaction(function () use ($normalized) {
+            foreach ($normalized as $row) {
+                SchoolClass::query()->create($row);
+            }
+        });
+
+        $count = count($normalized);
+        $message = $count === 1
+            ? 'Class created successfully.'
+            : "{$count} class sections created successfully.";
+
+        return redirect()
+            ->route('classes.manage')
+            ->with('status', $message);
+    }
+
+    public function update(Request $request, SchoolClass $schoolClass): RedirectResponse
+    {
+        $data = $request->validate([
+            'form_level' => ['required', 'integer', 'between:1,4'],
+            'section' => ['required', 'string', Rule::in(self::sectionLetters())],
             'academic_year' => ['required', 'string', 'max:16'],
             'capacity' => ['required', 'integer', 'min:1', 'max:100'],
             'room' => ['required', 'string', 'max:32'],
@@ -97,44 +180,7 @@ class ClassController extends Controller
         ]);
 
         $data['section'] = strtoupper(trim($data['section']));
-        $data['status'] = ClassStatus::Active;
         $data['room'] = trim($data['room']);
-        $data['homeroom_teacher_id'] = $data['homeroom_teacher_id'] ?? null;
-
-        if ($data['homeroom_teacher_id']) {
-            $this->assertActiveTeacher((int) $data['homeroom_teacher_id']);
-        }
-
-        $exists = SchoolClass::query()
-            ->where('form_level', $data['form_level'])
-            ->where('section', $data['section'])
-            ->where('academic_year', $data['academic_year'])
-            ->exists();
-
-        if ($exists) {
-            return back()->withInput()->withErrors([
-                'section' => 'That Form + Section + Academic Year already exists.',
-            ]);
-        }
-
-        SchoolClass::query()->create($data);
-
-        return redirect()
-            ->route('classes.manage')
-            ->with('status', 'Class created successfully.');
-    }
-
-    public function update(Request $request, SchoolClass $schoolClass): RedirectResponse
-    {
-        $data = $request->validate([
-            'form_level' => ['required', 'integer', 'between:1,4'],
-            'section' => ['required', 'string', 'max:8'],
-            'academic_year' => ['required', 'string', 'max:16'],
-            'capacity' => ['required', 'integer', 'min:1', 'max:100'],
-            'homeroom_teacher_id' => ['nullable', 'integer', 'exists:staff,id'],
-        ]);
-
-        $data['section'] = strtoupper(trim($data['section']));
         $data['homeroom_teacher_id'] = $data['homeroom_teacher_id'] ?? null;
 
         if ($data['homeroom_teacher_id']) {
@@ -272,6 +318,19 @@ class ClassController extends Controller
 
             $student = $entry->student()->lockForUpdate()->firstOrFail();
 
+            $existingEnrollment = Enrollment::query()
+                ->where('student_id', $student->id)
+                ->where('academic_year', $class->academic_year)
+                ->whereIn('status', [StudentStatus::Active, StudentStatus::Suspended])
+                ->lockForUpdate()
+                ->first();
+
+            if ($existingEnrollment) {
+                throw ValidationException::withMessages([
+                    'waitlist' => $student->full_name.' is already enrolled in another class for '.$class->academic_year.'.',
+                ]);
+            }
+
             Enrollment::query()->create([
                 'student_id' => $student->id,
                 'class_id' => $class->id,
@@ -288,6 +347,15 @@ class ClassController extends Controller
                 'enrolled_at' => now(),
             ]);
         });
+
+        $student = $waitlist->student()->with('primaryGuardian')->first();
+        if ($student) {
+            try {
+                \App\Support\MonthlyInvoiceGenerator::ensureForStudent($student, $schoolClass);
+            } catch (\Throwable) {
+                // Fee not configured — enrollment still succeeds.
+            }
+        }
 
         return redirect()
             ->route('classes.roster', $schoolClass)
@@ -307,5 +375,13 @@ class ClassController extends Controller
                 'homeroom_teacher_id' => 'Select an active teacher as class headmaster.',
             ]);
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function sectionLetters(): array
+    {
+        return range('A', 'L');
     }
 }

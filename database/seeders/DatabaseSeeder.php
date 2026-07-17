@@ -7,6 +7,8 @@ use App\Enums\AttendanceStatus;
 use App\Enums\ClassStatus;
 use App\Enums\Gender;
 use App\Enums\GuardianRelationship;
+use App\Enums\InvoiceStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\StaffRoleLabel;
 use App\Enums\StaffStatus;
 use App\Enums\StudentStatus;
@@ -16,6 +18,8 @@ use App\Models\Enrollment;
 use App\Models\Grade;
 use App\Models\GradeBoundary;
 use App\Models\Guardian;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\SchoolClass;
 use App\Models\Staff;
 use App\Models\Student;
@@ -23,7 +27,11 @@ use App\Models\Subject;
 use App\Models\TeacherSubjectAssignment;
 use App\Models\User;
 use App\Support\AcademicYear;
+use App\Support\DocumentNumbers;
+use App\Support\FeeCalculator;
 use App\Support\GradeScale;
+use App\Support\Money;
+use App\Support\MonthlyInvoiceGenerator;
 use App\Support\SchoolWeek;
 use App\Support\Subjects;
 use Carbon\Carbon;
@@ -42,6 +50,10 @@ class DatabaseSeeder extends Seeder
         $this->seedClassesAndStudents();
         $this->seedAttendance();
         $this->seedGrades();
+        $this->seedFees();
+        $this->seedTransport();
+        $this->seedPayroll();
+        $this->seedNotificationTemplates();
     }
 
     private function seedStaffAndUsers(): void
@@ -367,7 +379,7 @@ class DatabaseSeeder extends Seeder
     }
 
     /**
-     * Sample attendance for the last ~2 weeks of school days (Sat–Wed).
+     * Sample attendance for the last 3 months of school days (Sat–Wed).
      */
     private function seedAttendance(): void
     {
@@ -387,13 +399,9 @@ class DatabaseSeeder extends Seeder
             return;
         }
 
-        $schoolDays = [];
-        $cursor = Carbon::parse('2026-07-15')->startOfDay(); // Wed
-        while (count($schoolDays) < 10) {
-            if (SchoolWeek::dayKey($cursor) !== null) {
-                $schoolDays[] = $cursor->toDateString();
-            }
-            $cursor->subDay();
+        $schoolDays = $this->recentSchoolDays(3);
+        if ($schoolDays === []) {
+            return;
         }
 
         foreach ($schoolDays as $date) {
@@ -403,30 +411,46 @@ class DatabaseSeeder extends Seeder
                     $date
                 );
 
-                $record = AttendanceRecord::query()
-                    ->where('student_id', $enrollment->student_id)
-                    ->where('class_id', $enrollment->class_id)
-                    ->whereDate('date', $date)
-                    ->first();
-
-                $attrs = [
-                    'status' => $status,
-                    'reason' => $reason,
-                    'marked_by' => $markerId,
-                ];
-
-                if ($record) {
-                    $record->update($attrs);
-                } else {
-                    AttendanceRecord::query()->create([
+                AttendanceRecord::query()->updateOrCreate(
+                    [
                         'student_id' => $enrollment->student_id,
                         'class_id' => $enrollment->class_id,
                         'date' => $date,
-                        ...$attrs,
-                    ]);
-                }
+                    ],
+                    [
+                        'status' => $status,
+                        'reason' => $reason,
+                        'marked_by' => $markerId,
+                    ]
+                );
             }
         }
+    }
+
+    /**
+     * School days (Sat–Wed) from today back through the last N calendar months.
+     *
+     * @return list<string> Y-m-d
+     */
+    private function recentSchoolDays(int $months): array
+    {
+        $end = now()->startOfDay();
+        $start = now()->startOfMonth()->subMonths(max(0, $months - 1))->startOfDay();
+        $ayStart = Carbon::create(AcademicYear::startYear(), 9, 1)->startOfDay();
+        if ($start->lt($ayStart)) {
+            $start = $ayStart->copy();
+        }
+
+        $days = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            if (SchoolWeek::dayKey($cursor) !== null) {
+                $days[] = $cursor->toDateString();
+            }
+            $cursor->addDay();
+        }
+
+        return $days;
     }
 
     /**
@@ -449,7 +473,7 @@ class DatabaseSeeder extends Seeder
     }
 
     /**
-     * Default A–F boundaries + Term 2 sample scores for demo classes.
+     * Default A–F boundaries + Term 1 & Term 2 sample scores for all demo classes.
      */
     private function seedGrades(): void
     {
@@ -463,22 +487,21 @@ class DatabaseSeeder extends Seeder
         }
 
         $year = AcademicYear::current();
-        $term = AcademicTerm::Term2;
         $subjects = Subject::query()->orderBy('sort_order')->get();
 
         if ($subjects->isEmpty()) {
             return;
         }
 
-        // Seed Form 1-A and Form 2-A so grade entry + report have data on first open.
         $classes = SchoolClass::query()
             ->where('academic_year', $year)
             ->where('status', ClassStatus::Active)
-            ->where(function ($q) {
-                $q->where(fn ($q2) => $q2->where('form_level', 1)->where('section', 'A'))
-                    ->orWhere(fn ($q2) => $q2->where('form_level', 2)->where('section', 'A'));
-            })
             ->get();
+
+        $terms = [
+            AcademicTerm::Term1->value => now()->subMonths(4)->subDays(3),
+            AcademicTerm::Term2->value => now()->subWeeks(2),
+        ];
 
         foreach ($classes as $class) {
             $enrollments = Enrollment::query()
@@ -487,44 +510,262 @@ class DatabaseSeeder extends Seeder
                 ->where('status', StudentStatus::Active)
                 ->get(['student_id']);
 
-            foreach ($enrollments as $enrollment) {
-                foreach ($subjects as $subject) {
-                    $score = 45 + (($enrollment->student_id * 7 + $subject->id * 11 + $class->id * 3) % 51);
-                    $letter = GradeScale::letterFor((float) $score);
-                    if ($letter === null) {
-                        continue;
-                    }
+            if ($enrollments->isEmpty()) {
+                continue;
+            }
 
-                    $existing = Grade::query()
-                        ->where('student_id', $enrollment->student_id)
-                        ->where('class_id', $class->id)
-                        ->where('subject_id', $subject->id)
-                        ->where('term', $term)
-                        ->where('academic_year', $year)
-                        ->first();
+            foreach ($terms as $termValue => $enteredAt) {
+                $term = AcademicTerm::from($termValue);
+                $termOffset = $term === AcademicTerm::Term1 ? 0 : 5;
 
-                    $attrs = [
-                        'score_percent' => $score,
-                        'letter_grade' => $letter,
-                        'remarks' => $score >= 85 ? 'Excellent work' : ($score < 40 ? 'Needs support' : null),
-                        'entered_by' => $enteredBy,
-                    ];
+                foreach ($enrollments as $enrollment) {
+                    foreach ($subjects as $subject) {
+                        $score = 40 + (($enrollment->student_id * 7 + $subject->id * 11 + $class->id * 3 + $termOffset) % 56);
+                        $letter = GradeScale::letterFor((float) $score);
+                        if ($letter === null) {
+                            continue;
+                        }
 
-                    if ($existing) {
-                        $existing->update($attrs);
-                    } else {
-                        Grade::query()->create([
-                            'student_id' => $enrollment->student_id,
-                            'class_id' => $class->id,
-                            'subject_id' => $subject->id,
-                            'term' => $term,
-                            'academic_year' => $year,
-                            'first_entered_at' => now()->subDays(2),
-                            ...$attrs,
-                        ]);
+                        Grade::query()->updateOrCreate(
+                            [
+                                'student_id' => $enrollment->student_id,
+                                'class_id' => $class->id,
+                                'subject_id' => $subject->id,
+                                'term' => $term,
+                                'academic_year' => $year,
+                            ],
+                            [
+                                'score_percent' => $score,
+                                'letter_grade' => $letter,
+                                'remarks' => $score >= 85 ? 'Excellent work' : ($score < 40 ? 'Needs support' : null),
+                                'entered_by' => $enteredBy,
+                                'first_entered_at' => $enteredAt,
+                            ]
+                        );
                     }
                 }
             }
+        }
+    }
+
+    private function seedFees(): void
+    {
+        $year = AcademicYear::current();
+
+        \App\Models\SchoolSetting::set('monthly_fee_usd', '45');
+        \App\Models\SchoolSetting::set('sibling_discount_percent', '10');
+        \App\Models\SchoolSetting::set('need_based_discount_percent', '20');
+
+        // Flag a few students for need-based demo.
+        Student::query()->whereIn('student_code', ['STU-001', 'STU-005'])->update(['need_based_discount' => true]);
+
+        $financeId = User::query()->where('email', 'finance@dugsi.edu.sl')->value('id')
+            ?? User::query()->where('email', 'admin@dugsi.edu.sl')->value('id');
+
+        if (! $financeId) {
+            return;
+        }
+
+        // Last 3 billable months (within the academic year).
+        $months = [];
+        for ($i = 2; $i >= 0; $i--) {
+            $months[] = now()->startOfMonth()->subMonths($i);
+        }
+        $ayStart = Carbon::create(AcademicYear::startYear(), 9, 1)->startOfMonth();
+        $months = array_values(array_filter(
+            $months,
+            fn ($m) => $m->gte($ayStart) && $m->lte(now()->startOfMonth())
+        ));
+        if ($months === []) {
+            $months = [now()->startOfMonth()];
+        }
+
+        $enrollments = Enrollment::query()
+            ->with(['student.primaryGuardian', 'schoolClass'])
+            ->where('academic_year', $year)
+            ->where('status', StudentStatus::Active)
+            ->get();
+
+        foreach ($months as $billingMonth) {
+            foreach ($enrollments as $enrollment) {
+                $student = $enrollment->student;
+                $class = $enrollment->schoolClass;
+                if (! $student || ! $class) {
+                    continue;
+                }
+
+                try {
+                    $quote = FeeCalculator::quote($student, $class, $year);
+                } catch (\Throwable) {
+                    continue;
+                }
+
+                $invoice = Invoice::query()
+                    ->where('student_id', $student->id)
+                    ->whereDate('billing_month', $billingMonth->toDateString())
+                    ->first();
+
+                if (! $invoice) {
+                    $invoice = Invoice::query()->create([
+                        'invoice_number' => DocumentNumbers::nextInvoiceNumber($billingMonth),
+                        'student_id' => $student->id,
+                        'class_id' => $class->id,
+                        'academic_year' => $year,
+                        'billing_month' => $billingMonth->toDateString(),
+                        'base_amount' => $quote['base'],
+                        'discount_applied' => $quote['discount'],
+                        'discount_reason' => $quote['reason'],
+                        'amount_due' => $quote['due'],
+                        'amount_paid' => 0,
+                        'status' => InvoiceStatus::Unpaid,
+                    ]);
+                }
+
+                if ($invoice->payments()->exists()) {
+                    continue;
+                }
+
+                // Deterministic payment mix across the last 3 months:
+                // ~50% paid in full, ~25% partial, ~25% unpaid.
+                $pattern = ($student->id + $billingMonth->month) % 4;
+
+                if ($pattern === 3) {
+                    continue; // unpaid
+                }
+
+                $payAmount = $pattern === 2
+                    ? Money::round(((float) $invoice->amount_due) * 0.5)
+                    : (float) $invoice->amount_due;
+
+                if ($payAmount <= 0) {
+                    continue;
+                }
+
+                Payment::query()->create([
+                    'invoice_id' => $invoice->id,
+                    'student_id' => $student->id,
+                    'amount' => $payAmount,
+                    'method' => $student->id % 2 === 0 ? PaymentMethod::Cash : PaymentMethod::MobileMoney,
+                    'receipt_number' => DocumentNumbers::nextReceiptNumber($billingMonth->copy()->addDays(5 + ($student->id % 10))),
+                    'paid_at' => $billingMonth->copy()->addDays(5 + ($student->id % 10))->setTime(10, 0),
+                    'recorded_by' => $financeId,
+                    'notes' => $pattern === 2 ? 'Partial payment — balance due' : null,
+                ]);
+                $invoice->refreshStatusFromPayments();
+            }
+        }
+    }
+
+    private function seedPayroll(): void
+    {
+        $actorId = User::query()->where('email', 'finance@dugsi.edu.sl')->value('id')
+            ?? User::query()->where('email', 'admin@dugsi.edu.sl')->value('id');
+
+        if (! $actorId) {
+            return;
+        }
+
+        $actor = User::query()->find($actorId);
+        if (! $actor) {
+            return;
+        }
+
+        $month = now()->startOfMonth()->subMonth();
+
+        try {
+            \App\Support\PayrollGenerator::confirm($month, $actor, 'Seeded payroll run');
+        } catch (\Throwable) {
+            // Run may already exist on re-seed of fees-only paths.
+        }
+    }
+
+    private function seedTransport(): void
+    {
+        $year = AcademicYear::current();
+
+        $driver = Staff::query()->create([
+            'employee_code' => Staff::nextEmployeeCode(),
+            'full_name' => 'Cali Bus Driver',
+            'role_label' => StaffRoleLabel::Driver,
+            'status' => StaffStatus::Active,
+            'phone' => '+252634009900',
+            'date_joined' => now()->toDateString(),
+        ]);
+
+        $bus = \App\Models\Vehicle::query()->create([
+            'plate_number' => 'SL-BUS-01',
+            'label' => 'Hargeisa North',
+            'capacity' => 40,
+            'make_model' => null,
+            'status' => \App\Enums\VehicleStatus::Active,
+            'driver_staff_id' => $driver->id,
+        ]);
+
+        $route = \App\Models\TransportRoute::query()->create([
+            'name' => 'Hargeisa North',
+            'code' => null,
+            'vehicle_id' => $bus->id,
+            'academic_year' => $year,
+            'status' => \App\Enums\TransportRouteStatus::Active,
+            'notes' => null,
+        ]);
+
+        $riders = Student::query()
+            ->where('status', StudentStatus::Active)
+            ->whereHas('enrollments', fn ($e) => $e->where('academic_year', $year)->where('status', StudentStatus::Active))
+            ->orderBy('id')
+            ->limit(5)
+            ->get();
+
+        foreach ($riders as $student) {
+            \App\Models\TransportAssignment::query()->create([
+                'student_id' => $student->id,
+                'route_id' => $route->id,
+                'stop_id' => null,
+                'academic_year' => $year,
+                'status' => \App\Enums\TransportAssignmentStatus::Active,
+                'started_on' => now()->startOfMonth()->toDateString(),
+            ]);
+        }
+
+        FeeCalculator::clearSiblingCache();
+        MonthlyInvoiceGenerator::recalculateUnpaid(null, $year);
+    }
+
+    private function seedNotificationTemplates(): void
+    {
+        $defaults = [
+            [
+                'type' => \App\Enums\NotificationType::AbsenceAlert,
+                'name' => 'Absence Alert',
+                'body' => 'Dear parent, {student_name} ({class}) was absent on {date}. Please contact the school.',
+                'variables' => ['student_name', 'class', 'date'],
+            ],
+            [
+                'type' => \App\Enums\NotificationType::FeeReminder,
+                'name' => 'Fee Due Reminder',
+                'body' => 'Dear parent, fee reminder for {student_name}: {amount} due by {due_date}.',
+                'variables' => ['student_name', 'amount', 'due_date'],
+            ],
+            [
+                'type' => \App\Enums\NotificationType::FeeOverdue,
+                'name' => 'Fee Overdue Notice',
+                'body' => 'Dear parent, fee for {student_name} of {amount} is overdue by {days} days. Please pay soon.',
+                'variables' => ['student_name', 'amount', 'days'],
+            ],
+        ];
+
+        foreach ($defaults as $row) {
+            \App\Models\NotificationTemplate::query()->updateOrCreate(
+                ['type' => $row['type']->value],
+                [
+                    'name' => $row['name'],
+                    'channel' => 'sms',
+                    'body' => $row['body'],
+                    'variables' => $row['variables'],
+                    'is_active' => true,
+                ],
+            );
         }
     }
 }

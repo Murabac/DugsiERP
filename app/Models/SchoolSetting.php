@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 
@@ -62,5 +63,49 @@ class SchoolSetting extends Model
     public static function schoolLetterheadSub(): string
     {
         return self::schoolTagline().' · '.self::schoolLocation();
+    }
+
+    /** School-wide monthly tuition (USD). Same for all forms/classes. */
+    public static function monthlyFeeUsd(): float
+    {
+        return Money::round(self::get('monthly_fee_usd', '45') ?? '45');
+    }
+
+    public static function siblingDiscountPercent(): int
+    {
+        return max(0, min(100, (int) (self::get('sibling_discount_percent', '10') ?? '10')));
+    }
+
+    public static function needBasedDiscountPercent(): int
+    {
+        return max(0, min(100, (int) (self::get('need_based_discount_percent', '20') ?? '20')));
+    }
+
+    public static function transportFeeUsd(): float
+    {
+        return Money::round(self::get('transport_fee_usd', '15') ?? '15');
+    }
+
+    public static function staffAttendanceAllowedCidrs(): string
+    {
+        return (string) (self::get('staff_attendance_allowed_cidrs', '') ?? '');
+    }
+
+    public static function staffAttendanceLateAfter(): string
+    {
+        return \App\Support\StaffAttendancePunch::lateAfterTime();
+    }
+
+    /**
+     * @return array{monthly_fee_usd: float, sibling_discount_percent: int, need_based_discount_percent: int, transport_fee_usd: float}
+     */
+    public static function feeSettings(): array
+    {
+        return [
+            'monthly_fee_usd' => self::monthlyFeeUsd(),
+            'sibling_discount_percent' => self::siblingDiscountPercent(),
+            'need_based_discount_percent' => self::needBasedDiscountPercent(),
+            'transport_fee_usd' => self::transportFeeUsd(),
+        ];
     }
 }

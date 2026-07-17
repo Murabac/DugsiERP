@@ -64,7 +64,10 @@
                         <td class="px-4 py-2.5 text-xs text-slate-500">{{ $member->date_joined?->format('Y-m-d') ?? '—' }}</td>
                         <td class="px-4 py-2.5"><x-status-badge :status="$member->status" /></td>
                         <td class="px-4 py-2.5">
-                            <a href="{{ route('staff.show', $member) }}" class="text-xs text-blue-700 hover:underline">View</a>
+                            <div class="flex items-center gap-3">
+                                <a href="{{ route('staff.show', $member) }}" class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"><x-icon name="eye" :size="12" /> View</a>
+                                <a href="{{ route('staff.show', ['staff' => $member, 'edit' => 1]) }}" class="text-xs font-medium text-slate-600 hover:underline">Edit</a>
+                            </div>
                         </td>
                     </tr>
                 @empty

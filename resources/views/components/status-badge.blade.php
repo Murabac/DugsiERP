@@ -13,20 +13,18 @@
     }
 
     $classes = match ($key) {
-        'active', 'primary' => 'bg-green-100 text-green-800',
-        'waitlisted', 'waiting', 'on_leave' => 'bg-amber-100 text-amber-800',
-        'teacher', 'info' => 'bg-blue-100 text-blue-800',
+        'active', 'primary', 'paid', 'present', 'sent', 'confirmed', 'success' => 'bg-green-100 text-green-800',
+        'waitlisted', 'waiting', 'on_leave', 'partial', 'late', 'warning', 'queued' => 'bg-amber-100 text-amber-800',
+        'teacher', 'info', 'graduated' => 'bg-blue-100 text-blue-800',
         'admin', 'finance' => 'bg-violet-100 text-violet-800',
-        'super_admin', 'danger' => 'bg-red-100 text-red-800',
-        'librarian', 'neutral' => 'bg-slate-100 text-slate-700',
+        'super_admin', 'danger', 'unpaid', 'absent', 'failed', 'suspended', 'resigned' => 'bg-red-100 text-red-800',
+        'librarian', 'neutral', 'stubbed', 'draft' => 'bg-slate-100 text-slate-600',
         'transferred' => 'bg-amber-100 text-amber-800',
-        'graduated' => 'bg-blue-100 text-blue-800',
-        'suspended', 'resigned' => 'bg-red-100 text-red-800',
         'archived' => 'bg-slate-100 text-slate-600',
         default => 'bg-slate-100 text-slate-700',
     };
 @endphp
 
-<span {{ $attributes->merge(['class' => "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold {$classes}"]) }}>
+<span {{ $attributes->merge(['class' => "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium {$classes}"]) }}>
     {{ $slot->isEmpty() ? $display : $slot }}
 </span>

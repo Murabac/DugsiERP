@@ -24,7 +24,7 @@
 
     @unless ($canEdit)
         <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Teachers can view grade boundaries. Only Admin / Super Admin can edit them.
+            Only Admin / Super Admin can edit grade boundaries.
         </div>
     @endunless
 

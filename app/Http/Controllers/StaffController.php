@@ -43,7 +43,7 @@ class StaffController extends Controller
             'search' => $search,
             'roleFilter' => $role,
             'statusFilter' => $status,
-            ...$this->formOptions(),
+            ...$this->formOptions($request->user()),
         ]);
     }
 
@@ -68,11 +68,17 @@ class StaffController extends Controller
         $roleLabel = StaffRoleLabel::from($data['role_label']);
         $createLogin = (bool) ($data['create_login'] ?? false);
 
+        if ($roleLabel === StaffRoleLabel::Admin && ! $request->user()->isSuperAdmin()) {
+            return back()->withInput()->withErrors([
+                'role_label' => 'Only Super Admins can create Admin staff records.',
+            ]);
+        }
+
         if ($createLogin) {
             $userRole = $roleLabel->toUserRole();
             if ($userRole === null) {
                 return back()->withInput()->withErrors([
-                    'create_login' => 'Librarian staff cannot have a system login. Create Teacher/Finance/Admin staff for login access.',
+                    'create_login' => 'Librarian and Driver staff cannot have a system login. Create Teacher/Finance/Admin staff for login access.',
                 ]);
             }
 
@@ -108,16 +114,18 @@ class StaffController extends Controller
 
             if ($createLogin) {
                 $userRole = $roleLabel->toUserRole();
+                $plainPassword = \Illuminate\Support\Str::password(12);
                 User::query()->create([
                     'name' => $staff->full_name,
                     'email' => $data['login_email'],
                     'phone' => $data['login_phone'] ?? $staff->phone,
-                    'password' => Hash::make('password'),
+                    'password' => Hash::make($plainPassword),
                     'role' => $userRole,
                     'is_active' => true,
                     'staff_id' => $staff->id,
                     'email_verified_at' => now(),
                 ]);
+                $staff->setAttribute('_temp_login_password', $plainPassword);
             }
 
             return $staff;
@@ -125,7 +133,10 @@ class StaffController extends Controller
 
         $message = 'Staff member saved.';
         if ($createLogin) {
-            $message .= ' Login created (temporary password: password).';
+            $temp = $staff->getAttribute('_temp_login_password');
+            $message .= $temp
+                ? ' Login created (temporary password: '.$temp.'). Ask them to change it after first login.'
+                : ' Login created.';
         }
 
         return redirect()
@@ -153,6 +164,13 @@ class StaffController extends Controller
         $subject = $data['subject_specialty'] ?? null;
         if ($subject === '') {
             $subject = null;
+        }
+
+        if ($roleLabel === StaffRoleLabel::Admin && ! $request->user()->isSuperAdmin()
+            && $staff->role_label !== StaffRoleLabel::Admin) {
+            return back()->withInput()->withErrors([
+                'role_label' => 'Only Super Admins can set staff role to Admin.',
+            ]);
         }
 
         if ($roleLabel === StaffRoleLabel::Teacher && blank($subject)) {
@@ -255,26 +273,50 @@ class StaffController extends Controller
             ->with('status', $message);
     }
 
-    public function show(Staff $staff): View
+    public function show(Request $request, Staff $staff): View
     {
         $staff->load('user');
 
+        $canSeeSalary = $request->user()->isAdmin();
+        $tab = (string) $request->query('tab', 'overview');
+        if ($tab === 'payroll' && ! $canSeeSalary) {
+            $tab = 'overview';
+        }
+
+        $payrollHistory = collect();
+        if ($tab === 'payroll' && $canSeeSalary) {
+            $payrollHistory = $staff->payrollItems()
+                ->with('payrollRun')
+                ->latest('id')
+                ->get();
+        }
+
         return view('staff.show', [
             'staff' => $staff,
-            'canSeeSalary' => request()->user()->isAdmin()
-                || request()->user()->hasRole(UserRole::Finance),
-            'canEdit' => request()->user()->isAdmin(),
-            ...$this->formOptions(),
+            'tab' => $tab,
+            'payrollHistory' => $payrollHistory,
+            'canSeeSalary' => $canSeeSalary,
+            'canEdit' => $request->user()->isAdmin(),
+            ...$this->formOptions($request->user(), $staff),
         ]);
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function formOptions(): array
+    private function formOptions(?User $actor = null, ?Staff $staff = null): array
     {
+        $roleLabels = StaffRoleLabel::cases();
+        if ($actor && ! $actor->isSuperAdmin()) {
+            $roleLabels = array_values(array_filter(
+                $roleLabels,
+                fn (StaffRoleLabel $role) => $role !== StaffRoleLabel::Admin
+                    || ($staff !== null && $staff->role_label === StaffRoleLabel::Admin)
+            ));
+        }
+
         return [
-            'roleLabels' => StaffRoleLabel::cases(),
+            'roleLabels' => $roleLabels,
             'statuses' => StaffStatus::cases(),
             'genders' => Gender::cases(),
             'subjects' => Subjects::all(),

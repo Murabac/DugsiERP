@@ -18,4 +18,14 @@ enum NotificationStatus: string
             self::Failed => 'Failed',
         };
     }
+
+    public function badgeClass(): string
+    {
+        return match ($this) {
+            self::Stubbed => 'bg-slate-100 text-slate-700',
+            self::Queued => 'bg-amber-100 text-amber-800',
+            self::Sent => 'bg-green-100 text-green-800',
+            self::Failed => 'bg-red-100 text-red-800',
+        };
+    }
 }

@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\PayrollRunStatus;
 use App\Enums\StaffRoleLabel;
 use App\Enums\StaffStatus;
 use App\Enums\UserRole;
+use App\Models\PayrollItem;
+use App\Models\PayrollRun;
 use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,7 +59,7 @@ class StaffUserTest extends TestCase
                 'create_login' => '1',
                 'login_email' => 'newadmin@dugsi.edu.sl',
             ])
-            ->assertSessionHasErrors('create_login');
+            ->assertSessionHasErrors('role_label');
     }
 
     public function test_super_admin_can_create_admin_user(): void
@@ -144,6 +147,65 @@ class StaffUserTest extends TestCase
             ->assertSee('Chemistry')
             ->assertSee('$610.00')
             ->assertSee('Edit');
+    }
+
+    public function test_staff_payroll_tab_shows_member_history(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $staff = Staff::query()->create([
+            'employee_code' => 'EMP-PAYH',
+            'full_name' => 'History Teacher',
+            'role_label' => StaffRoleLabel::Teacher,
+            'subject_specialty' => 'History',
+            'fixed_salary_usd' => 450,
+            'status' => StaffStatus::Active,
+        ]);
+        $other = Staff::query()->create([
+            'employee_code' => 'EMP-OTHER',
+            'full_name' => 'Other Staff',
+            'role_label' => StaffRoleLabel::Teacher,
+            'subject_specialty' => 'Math',
+            'fixed_salary_usd' => 400,
+            'status' => StaffStatus::Active,
+        ]);
+
+        $run = PayrollRun::query()->create([
+            'billing_month' => now()->startOfMonth()->toDateString(),
+            'status' => PayrollRunStatus::Confirmed,
+            'staff_count' => 2,
+            'total_amount' => 850,
+            'generated_by' => $admin->id,
+            'generated_at' => now(),
+            'confirmed_by' => $admin->id,
+            'confirmed_at' => now(),
+        ]);
+
+        PayrollItem::query()->create([
+            'payroll_run_id' => $run->id,
+            'staff_id' => $staff->id,
+            'employee_code' => $staff->employee_code,
+            'full_name' => $staff->full_name,
+            'role_label' => $staff->role_label->value,
+            'salary_usd' => 450,
+            'payslip_number' => 'PS-'.$staff->employee_code.'-001',
+        ]);
+        PayrollItem::query()->create([
+            'payroll_run_id' => $run->id,
+            'staff_id' => $other->id,
+            'employee_code' => $other->employee_code,
+            'full_name' => $other->full_name,
+            'role_label' => $other->role_label->value,
+            'salary_usd' => 400,
+            'payslip_number' => 'PS-'.$other->employee_code.'-001',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('staff.show', ['staff' => $staff, 'tab' => 'payroll']))
+            ->assertOk()
+            ->assertSee('Payroll History')
+            ->assertSee('PS-'.$staff->employee_code.'-001')
+            ->assertSee('$450.00')
+            ->assertDontSee('PS-'.$other->employee_code.'-001');
     }
 
     public function test_super_admin_can_update_staff(): void

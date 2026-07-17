@@ -4,16 +4,11 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-base font-semibold text-slate-900">Attendance History</h2>
-            <p class="mt-0.5 text-xs text-slate-500">Daily summaries by class · {{ $academicYear }}</p>
-        </div>
-        <a href="{{ route('attendance.index', array_filter(['class' => $schoolClass?->id])) }}"
-            class="inline-flex items-center justify-center rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56]">
-            Mark Attendance
-        </a>
-    </div>
+    <x-section-header title="Attendance History" :sub="'Daily summaries by class · '.$academicYear">
+        <x-slot:action>
+            <x-btn href="{{ route('attendance.index', array_filter(['class' => $schoolClass?->id])) }}">Mark Attendance</x-btn>
+        </x-slot:action>
+    </x-section-header>
 
     @if ($classes->isEmpty())
         <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">

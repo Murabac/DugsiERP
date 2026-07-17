@@ -15,6 +15,7 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Support\AcademicYear;
 use App\Support\GradeEditRules;
+use App\Support\GradeReport;
 use App\Support\GradeScale;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -437,7 +438,7 @@ class GradeController extends Controller
 
         $report = null;
         if ($schoolClass && $student) {
-            $report = $this->buildStudentReport($student, $schoolClass, $term, $year);
+            $report = GradeReport::for($student, $schoolClass, $term, $year);
         }
 
         return view('grades.report', [
@@ -453,16 +454,33 @@ class GradeController extends Controller
         ]);
     }
 
-    public function print(Request $request): View
+    public function print(Request $request): View|RedirectResponse
     {
         $user = $request->user();
         $year = AcademicYear::current();
 
-        $data = $request->validate([
-            'class' => ['required', 'integer', 'exists:classes,id'],
-            'student' => ['required', 'integer', 'exists:students,id'],
-            'term' => ['required', Rule::enum(AcademicTerm::class)],
-        ]);
+        // Read query string explicitly (print opens in a new tab via GET).
+        $payload = [
+            'class' => $request->query('class', $request->input('class')),
+            'student' => $request->query('student', $request->input('student')),
+            'term' => $request->query('term', $request->input('term')),
+        ];
+
+        try {
+            $data = validator($payload, [
+                'class' => ['required', 'integer', 'exists:classes,id'],
+                'student' => ['required', 'integer', 'exists:students,id'],
+                'term' => ['required', Rule::enum(AcademicTerm::class)],
+            ])->validate();
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('grades.report', array_filter([
+                    'class' => $payload['class'] ?: null,
+                    'student' => $payload['student'] ?: null,
+                    'term' => is_string($payload['term'] ?? null) ? $payload['term'] : null,
+                ]))
+                ->withErrors($e->errors());
+        }
 
         $schoolClass = SchoolClass::query()->findOrFail($data['class']);
         abort_unless($user->canGenerateGradeReport($schoolClass), 403);
@@ -478,7 +496,7 @@ class GradeController extends Controller
         abort_unless($enrollment !== null, 404);
 
         $term = AcademicTerm::from($data['term']);
-        $report = $this->buildStudentReport($student, $schoolClass, $term, $year);
+        $report = GradeReport::for($student, $schoolClass, $term, $year);
 
         return view('grades.print', [
             'schoolClass' => $schoolClass,
@@ -489,101 +507,6 @@ class GradeController extends Controller
             'report' => $report,
             'issuedAt' => now(),
         ]);
-    }
-
-    /**
-     * @return array{
-     *     rows: \Illuminate\Support\Collection,
-     *     average: ?float,
-     *     average_letter: ?LetterGrade,
-     *     rank: ?int,
-     *     class_size: int,
-     *     attendance_rate: ?float
-     * }
-     */
-    private function buildStudentReport(Student $student, SchoolClass $schoolClass, AcademicTerm $term, string $year): array
-    {
-        $subjects = Subject::query()->orderBy('sort_order')->get();
-
-        $grades = Grade::query()
-            ->where('student_id', $student->id)
-            ->where('class_id', $schoolClass->id)
-            ->where('term', $term)
-            ->where('academic_year', $year)
-            ->get()
-            ->keyBy('subject_id');
-
-        $rows = $subjects->map(function (Subject $subject) use ($grades) {
-            $grade = $grades->get($subject->id);
-
-            return [
-                'subject' => $subject,
-                'score' => $grade?->score_percent !== null ? (float) $grade->score_percent : null,
-                'letter' => $grade?->letter_grade,
-                'remarks' => $grade?->remarks,
-            ];
-        });
-
-        $scored = $rows->filter(fn ($r) => $r['score'] !== null);
-        $average = $scored->isNotEmpty() ? round($scored->avg('score'), 1) : null;
-        $averageLetter = $average !== null ? GradeScale::letterFor($average) : null;
-
-        $averages = $this->classTermAverages($schoolClass->id, $term, $year);
-        $rank = null;
-        $classSize = $averages->count();
-        if ($average !== null && $classSize > 0) {
-            $better = $averages->filter(fn ($avg) => $avg > $average)->count();
-            $rank = $better + 1;
-        }
-
-        $attendanceRate = $this->attendanceRateFor($student->id, $schoolClass->id);
-
-        return [
-            'rows' => $rows,
-            'average' => $average,
-            'average_letter' => $averageLetter,
-            'rank' => $rank,
-            'class_size' => $classSize,
-            'attendance_rate' => $attendanceRate,
-        ];
-    }
-
-    /**
-     * Competition rank inputs: student_id => term average.
-     *
-     * @return \Illuminate\Support\Collection<int, float>
-     */
-    private function classTermAverages(int $classId, AcademicTerm $term, string $year)
-    {
-        $grades = Grade::query()
-            ->where('class_id', $classId)
-            ->where('term', $term)
-            ->where('academic_year', $year)
-            ->get(['student_id', 'score_percent']);
-
-        return $grades
-            ->groupBy('student_id')
-            ->map(fn ($group) => round($group->avg('score_percent'), 1))
-            ->filter(fn ($avg) => $avg !== null);
-    }
-
-    private function attendanceRateFor(int $studentId, int $classId): ?float
-    {
-        $records = \App\Models\AttendanceRecord::query()
-            ->where('student_id', $studentId)
-            ->where('class_id', $classId)
-            ->get();
-
-        if ($records->isEmpty()) {
-            return null;
-        }
-
-        $presentish = $records->filter(fn ($r) => in_array($r->status, [
-            \App\Enums\AttendanceStatus::Present,
-            \App\Enums\AttendanceStatus::Late,
-        ], true))->count();
-
-        return round(($presentish / $records->count()) * 100, 1);
     }
 
     /**

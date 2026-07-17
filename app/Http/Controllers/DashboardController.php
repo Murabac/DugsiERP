@@ -7,11 +7,13 @@ use App\Enums\StaffStatus;
 use App\Enums\StudentStatus;
 use App\Enums\UserRole;
 use App\Models\Enrollment;
+use App\Models\Invoice;
 use App\Models\SchoolClass;
 use App\Models\Staff;
 use App\Models\Student;
 use App\Models\TimetableSlot;
 use App\Support\AcademicYear;
+use App\Support\Money;
 use App\Support\SchoolWeek;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -67,6 +69,31 @@ class DashboardController extends Controller
                 'url' => route('classes.roster', $c),
             ]);
 
+        $classFillChart = [
+            'type' => 'bar',
+            'horizontal' => true,
+            'legend' => false,
+            'suffix' => '%',
+            'max' => 100,
+            'labels' => $classFill->map(fn (array $row) => $row['name'].' ('.$row['enrolled'].'/'.$row['capacity'].')')->all(),
+            'datasets' => [
+                [
+                    'label' => 'Fill %',
+                    'data' => $classFill->pluck('pct')->all(),
+                    'backgroundColor' => $classFill->map(function (array $row) {
+                        if ($row['pct'] >= 95) {
+                            return '#dc2626';
+                        }
+                        if ($row['pct'] >= 80) {
+                            return '#d97706';
+                        }
+
+                        return '#1e3a6e';
+                    })->all(),
+                ],
+            ],
+        ];
+
         return [
             'user' => $user,
             'academicYear' => $year,
@@ -77,6 +104,7 @@ class DashboardController extends Controller
                 ['label' => 'Timetable Slots', 'value' => (string) $slots, 'sub' => 'Scheduled periods this year', 'icon' => 'calendar', 'accent' => false],
             ],
             'classFill' => $classFill,
+            'classFillChart' => $classFillChart,
             'classFillTotal' => $classFillTotal,
             'activity' => $this->recentActivity($year),
         ];
@@ -203,14 +231,43 @@ class DashboardController extends Controller
             ->where('academic_year', $year)
             ->count();
 
+        $collected = Money::round(
+            Invoice::query()->where('academic_year', $year)->sum('amount_paid')
+        );
+        $due = Money::round(
+            Invoice::query()->where('academic_year', $year)->sum('amount_due')
+        );
+        $outstanding = Money::round(max(0, $due - $collected));
+        $recentInvoices = Invoice::query()
+            ->with(['student', 'schoolClass'])
+            ->where('academic_year', $year)
+            ->latest('id')
+            ->limit(6)
+            ->get();
+
+        $feesChart = [
+            'type' => 'doughnut',
+            'legend' => true,
+            'currency' => true,
+            'labels' => ['Collected', 'Outstanding'],
+            'datasets' => [
+                [
+                    'data' => [$collected, $outstanding],
+                    'backgroundColor' => ['#1e3a6e', '#cbd5e1'],
+                ],
+            ],
+        ];
+
         return [
             'user' => $user,
             'academicYear' => $year,
             'stats' => [
                 ['label' => 'Enrolled Students', 'value' => (string) $enrolledStudents, 'sub' => 'Active enrollments in '.$year, 'icon' => 'users', 'accent' => true],
-                ['label' => 'Active Classes', 'value' => (string) $classes, 'sub' => 'Fee structures in Week 7', 'icon' => 'layers', 'accent' => false],
-                ['label' => 'Fees Collected', 'value' => '—', 'sub' => 'Fee module arrives in Week 7', 'icon' => 'dollar-sign', 'accent' => false],
+                ['label' => 'Active Classes', 'value' => (string) $classes, 'sub' => 'Current academic year', 'icon' => 'layers', 'accent' => false],
+                ['label' => 'Fees Collected', 'value' => Money::format($collected), 'sub' => 'Of '.Money::format($due).' due', 'icon' => 'dollar-sign', 'accent' => false],
             ],
+            'feesChart' => $feesChart,
+            'recentInvoices' => $recentInvoices,
         ];
     }
 

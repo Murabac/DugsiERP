@@ -177,6 +177,10 @@ class GradeTest extends TestCase
         $this->actingAs($teacher)
             ->post(route('grades.boundaries.update'), $payload)
             ->assertForbidden();
+
+        $this->actingAs($teacher)
+            ->get(route('grades.boundaries'))
+            ->assertForbidden();
     }
 
     public function test_student_report_shows_rank(): void
@@ -234,6 +238,17 @@ class GradeTest extends TestCase
             ]))
             ->assertOk()
             ->assertSee(\App\Models\SchoolSetting::schoolName());
+    }
+
+    public function test_grade_print_without_params_redirects_with_errors(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+
+        $this->actingAs($admin)
+            ->from(route('grades.report'))
+            ->get(route('grades.print'))
+            ->assertRedirect(route('grades.report'))
+            ->assertSessionHasErrors(['class', 'student', 'term']);
     }
 
     public function test_teacher_cannot_grade_untought_class(): void

@@ -10,7 +10,7 @@ School ERP for a secondary school in Somaliland (Form 1–Form 4).
 | CSS | Vite + Tailwind 4 (tokens match `/design-reference`) |
 | Database | MySQL (`dugsierp`) |
 | Hosting | Bluehost (Week 13) |
-| SMS | Telesom (Week 9 / end) |
+| SMS | TextBee (local test) / Telesom (production) |
 
 ## Local setup (Week 0)
 
@@ -44,13 +44,24 @@ php artisan serve
 
 Open http://localhost:8000
 
+### Scheduler (monthly fee invoices)
+
+Invoices are created automatically on the **1st of each month** via `fees:generate-monthly`. On the server, run Laravel’s scheduler every minute (cron / Task Scheduler):
+
+```bash
+php artisan schedule:work
+# or: * * * * * php /path/to/artisan schedule:run
+```
+
+Opening Fee Collection does **not** create invoices by itself (safe GET). Use the scheduler, enrollment hooks, or the **Create / Sync month invoices** button on Fee Collection.
+
 ### Environment
 
 Copy `.env.example` → `.env`. Important keys:
 
 - `APP_NAME="Dugsi ERP"`
 - `DB_CONNECTION=mysql`, `DB_DATABASE=dugsierp`, `DB_USERNAME`, `DB_PASSWORD`
-- Telesom placeholders (`TELESOM_SMS_*`) — fill in Week 9
+- SMS: `SMS_DRIVER=auto` prefers TextBee when `TEXTBEE_*` is set; otherwise Telesom (`TELESOM_SMS_*`)
 
 Never commit `.env`.
 

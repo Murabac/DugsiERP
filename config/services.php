@@ -35,11 +35,25 @@ return [
         ],
     ],
 
+    'sms' => [
+        // auto | textbee | telesom — auto prefers TextBee when configured
+        'driver' => env('SMS_DRIVER', 'auto'),
+    ],
+
+    'textbee' => [
+        'api_base' => env('TEXTBEE_API_BASE', 'https://api.textbee.dev/api/v1'),
+        'api_key' => env('TEXTBEE_API_KEY'),
+        'device_id' => env('TEXTBEE_DEVICE_ID'),
+        // Set false on Windows PHP without a CA bundle (local testing only).
+        'verify_ssl' => filter_var(env('TEXTBEE_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
+    ],
+
     'telesom' => [
-        'api_url' => env('TELESOM_SMS_API_URL'),
+        'api_url' => env('TELESOM_SMS_API_URL', 'https://sms.mytelesom.com/index.php/Gway/sendsms/'),
         'username' => env('TELESOM_SMS_USERNAME'),
         'password' => env('TELESOM_SMS_PASSWORD'),
         'sender' => env('TELESOM_SMS_SENDER'),
+        'secret' => env('TELESOM_SMS_SECRET'),
     ],
 
 ];
