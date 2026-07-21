@@ -296,6 +296,100 @@ class ClassStudentTest extends TestCase
         $this->assertSame(WaitlistStatus::Enrolled, $entry->fresh()->status);
     }
 
+    public function test_roster_shows_form_master_and_allows_assign(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $staff = Staff::query()->create([
+            'employee_code' => 'T-FM',
+            'full_name' => 'Roster Form Master',
+            'gender' => Gender::Male,
+            'phone' => '252622222222',
+            'date_joined' => now()->toDateString(),
+            'role_label' => StaffRoleLabel::Teacher,
+            'status' => StaffStatus::Active,
+        ]);
+        $class = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'A',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'room' => 'R-1A',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('classes.roster', $class))
+            ->assertOk()
+            ->assertSee('No Form Master assigned')
+            ->assertSee('Assign Form Master');
+
+        $this->actingAs($admin)
+            ->from(route('classes.roster', $class))
+            ->put(route('classes.update', $class), [
+                'return_to' => 'roster',
+                'form_level' => 1,
+                'section' => 'A',
+                'academic_year' => AcademicYear::current(),
+                'capacity' => 30,
+                'room' => 'R-1A',
+                'homeroom_teacher_id' => $staff->id,
+            ])
+            ->assertRedirect(route('classes.roster', $class));
+
+        $this->assertSame($staff->id, $class->fresh()->homeroom_teacher_id);
+
+        $this->actingAs($admin)
+            ->get(route('classes.roster', $class))
+            ->assertOk()
+            ->assertSee('Roster Form Master')
+            ->assertSee('Change')
+            ->assertDontSee('No Form Master assigned');
+    }
+
+    public function test_admin_can_assign_form_master_role_staff_as_class_form_master(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $staff = Staff::query()->create([
+            'employee_code' => 'FM-001',
+            'full_name' => 'Amina Form Master',
+            'gender' => Gender::Female,
+            'phone' => '252611111111',
+            'date_joined' => now()->toDateString(),
+            'role_label' => 'form_master',
+            'status' => StaffStatus::Active,
+        ]);
+        $class = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'F',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'room' => 'R-1F',
+            'status' => ClassStatus::Active,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('classes.update', $class), [
+                'form_level' => 1,
+                'section' => 'F',
+                'academic_year' => AcademicYear::current(),
+                'capacity' => 30,
+                'room' => 'R-1F',
+                'homeroom_teacher_id' => $staff->id,
+            ])
+            ->assertRedirect(route('classes.manage'))
+            ->assertSessionHas('status');
+
+        $this->assertSame($staff->id, $class->fresh()->homeroom_teacher_id);
+
+        $login = User::factory()->create([
+            'role' => 'form_master',
+            'staff_id' => $staff->id,
+        ]);
+
+        $this->assertTrue($login->isHomeroomTeacherOf($class->fresh()));
+        $this->assertTrue($login->canGenerateGradeReport($class->fresh()));
+    }
+
     public function test_cannot_change_class_academic_year_when_students_enrolled(): void
     {
         $admin = User::factory()->role(UserRole::Admin)->create();
@@ -903,5 +997,303 @@ class ClassStudentTest extends TestCase
             'capacity' => 32,
             'room' => 'R-3A-NEW',
         ]);
+    }
+
+    private function writeBulkSpreadsheet(string $path, array $dataRows, ?array $headers = null): void
+    {
+        $writer = new \OpenSpout\Writer\XLSX\Writer;
+        $writer->openToFile($path);
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues($headers ?? [
+            'full_name', 'dob', 'gender', 'city', 'address', 'previous_school',
+            'guardian_name', 'guardian_phone', 'relationship', 'enrollment_date',
+        ]));
+        foreach ($dataRows as $row) {
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues($row));
+        }
+        $writer->close();
+    }
+
+    public function test_admin_can_download_student_bulk_template(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'A',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'status' => ClassStatus::Active,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('classes.roster.bulk-template', $class))
+            ->assertOk()
+            ->assertDownload();
+    }
+
+    public function test_admin_can_bulk_upload_students_to_class_roster(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'B',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'status' => ClassStatus::Active,
+        ]);
+
+        $path = storage_path('framework/testing-bulk-students.xlsx');
+        $this->writeBulkSpreadsheet($path, [
+            ['Bulk Student One', '2011-01-10', 'Female', 'Hargeisa', '', '', 'Parent One', '+252634111001', 'Mother', now()->toDateString()],
+            ['Bulk Student Two', '2011-02-20', 'Male', '', '', '', 'Parent Two', '+252634111002', 'Father', now()->toDateString()],
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($path, 'students.xlsx', null, null, true),
+            ])
+            ->assertRedirect(route('classes.roster', $class));
+
+        $this->assertDatabaseHas('students', ['full_name' => 'Bulk Student One']);
+        $this->assertDatabaseHas('students', ['full_name' => 'Bulk Student Two']);
+        $this->assertSame(2, Enrollment::query()->where('class_id', $class->id)->count());
+
+        @unlink($path);
+    }
+
+    public function test_teacher_cannot_bulk_upload_students(): void
+    {
+        $teacher = User::factory()->role(UserRole::Teacher)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'C',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'status' => ClassStatus::Active,
+        ]);
+
+        $path = storage_path('framework/testing-bulk-teacher.xlsx');
+        $this->writeBulkSpreadsheet($path, [
+            ['Teacher Blocked', '2011-03-03', 'Male', '', '', '', 'Parent', '+252634111088', 'Father', now()->toDateString()],
+        ]);
+
+        $this->actingAs($teacher)
+            ->get(route('classes.roster.bulk-template', $class))
+            ->assertForbidden();
+
+        $this->actingAs($teacher)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($path, 'students.xlsx', null, null, true),
+            ])
+            ->assertForbidden();
+
+        @unlink($path);
+    }
+
+    public function test_bulk_upload_skips_duplicate_students_on_reupload(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1,
+            'section' => 'D',
+            'academic_year' => AcademicYear::current(),
+            'capacity' => 30,
+            'status' => ClassStatus::Active,
+        ]);
+
+        $path = storage_path('framework/testing-bulk-dup.xlsx');
+        $this->writeBulkSpreadsheet($path, [
+            ['Same Student', '2011-05-05', 'Male', 'Hargeisa', '', '', 'Parent Same', '+252634111099', 'Father', now()->toDateString()],
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($path, 'students.xlsx', null, null, true),
+            ])
+            ->assertRedirect(route('classes.roster', $class));
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($path, 'students.xlsx', null, null, true),
+            ])
+            ->assertRedirect(route('classes.roster', $class))
+            ->assertSessionHas('status');
+
+        $this->assertSame(1, Student::query()->where('full_name', 'Same Student')->count());
+        $this->assertSame(1, Enrollment::query()->where('class_id', $class->id)->count());
+
+        @unlink($path);
+    }
+
+    public function test_bulk_upload_skips_duplicate_across_classes_and_within_file(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $year = AcademicYear::current();
+        $classA = SchoolClass::query()->create([
+            'form_level' => 2, 'section' => 'A', 'academic_year' => $year,
+            'capacity' => 30, 'status' => ClassStatus::Active,
+        ]);
+        $classB = SchoolClass::query()->create([
+            'form_level' => 2, 'section' => 'B', 'academic_year' => $year,
+            'capacity' => 30, 'status' => ClassStatus::Active,
+        ]);
+
+        $pathA = storage_path('framework/testing-bulk-a.xlsx');
+        $this->writeBulkSpreadsheet($pathA, [
+            ['Cross Class Kid', '2011-06-06', 'Female', '', '', '', 'Parent', '+252634111077', 'Mother', now()->toDateString()],
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $classA), [
+                'file' => new \Illuminate\Http\UploadedFile($pathA, 'a.xlsx', null, null, true),
+            ])
+            ->assertRedirect();
+
+        $pathB = storage_path('framework/testing-bulk-b.xlsx');
+        $this->writeBulkSpreadsheet($pathB, [
+            ['Cross Class Kid', '2011-06-06', 'Female', '', '', '', 'Parent', '+252634111077', 'Mother', now()->toDateString()],
+            ['In File Dup', '2011-07-07', 'Male', '', '', '', 'Parent', '+252634111066', 'Father', now()->toDateString()],
+            ['In File Dup', '2011-07-07', 'Male', '', '', '', 'Parent', '+252634111066', 'Father', now()->toDateString()],
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $classB), [
+                'file' => new \Illuminate\Http\UploadedFile($pathB, 'b.xlsx', null, null, true),
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('bulk_errors');
+
+        $this->assertSame(1, Student::query()->where('full_name', 'Cross Class Kid')->count());
+        $this->assertSame(1, Student::query()->where('full_name', 'In File Dup')->count());
+        $this->assertSame(0, Enrollment::query()->where('class_id', $classB->id)->whereHas('student', fn ($q) => $q->where('full_name', 'Cross Class Kid'))->count());
+        $this->assertSame(1, Enrollment::query()->where('class_id', $classB->id)->count());
+
+        @unlink($pathA);
+        @unlink($pathB);
+    }
+
+    public function test_bulk_upload_accepts_csv_and_excel_date_objects(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1, 'section' => 'E', 'academic_year' => AcademicYear::current(),
+            'capacity' => 30, 'status' => ClassStatus::Active,
+        ]);
+
+        $csv = storage_path('framework/testing-bulk.csv');
+        file_put_contents($csv, implode("\n", [
+            'full_name,dob,gender,city,address,previous_school,guardian_name,guardian_phone,relationship,enrollment_date',
+            'Csv Student,2011-08-08,Female,,, ,Csv Parent,+252634111055,Mother,'.now()->toDateString(),
+        ]));
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($csv, 'students.csv', 'text/csv', null, true),
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('students', ['full_name' => 'Csv Student']);
+
+        $xlsx = storage_path('framework/testing-bulk-dates.xlsx');
+        $writer = new \OpenSpout\Writer\XLSX\Writer;
+        $writer->openToFile($xlsx);
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([
+            'full_name', 'dob', 'gender', 'city', 'address', 'previous_school',
+            'guardian_name', 'guardian_phone', 'relationship', 'enrollment_date',
+        ]));
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([
+            'Date Cell Student',
+            new \DateTimeImmutable('2011-09-09'),
+            'Male',
+            '',
+            '',
+            '',
+            'Date Parent',
+            '+252634111044',
+            'Father',
+            new \DateTimeImmutable(now()->toDateString()),
+        ]));
+        $writer->close();
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($xlsx, 'dates.xlsx', null, null, true),
+            ])
+            ->assertRedirect();
+
+        $this->assertTrue(
+            Student::query()
+                ->where('full_name', 'Date Cell Student')
+                ->whereDate('dob', '2011-09-09')
+                ->exists()
+        );
+
+        @unlink($csv);
+        @unlink($xlsx);
+    }
+
+    public function test_bulk_upload_waitlists_when_class_full_and_rejects_bad_rows(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1, 'section' => 'F', 'academic_year' => AcademicYear::current(),
+            'capacity' => 1, 'status' => ClassStatus::Active,
+        ]);
+
+        $path = storage_path('framework/testing-bulk-full.xlsx');
+        $this->writeBulkSpreadsheet($path, [
+            ['Seat One', '2011-10-10', 'Male', '', '', '', 'Parent', '+252634111033', 'Father', now()->toDateString()],
+            ['Seat Two Waitlist', '2011-11-11', 'Female', '', '', '', 'Parent', '+252634111022', 'Mother', now()->toDateString()],
+            ['Bad Gender', '2011-12-12', 'Unknown', '', '', '', 'Parent', '+252634111011', 'Father', now()->toDateString()],
+            ['Bad Slash Date', '01/02/2011', 'Male', '', '', '', 'Parent', '+252634111000', 'Father', now()->toDateString()],
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($path, 'full.xlsx', null, null, true),
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('bulk_errors');
+
+        $this->assertSame(1, Enrollment::query()->where('class_id', $class->id)->count());
+        $this->assertSame(1, ClassWaitlist::query()->where('class_id', $class->id)->where('status', WaitlistStatus::Waiting)->count());
+        $this->assertDatabaseMissing('students', ['full_name' => 'Bad Gender']);
+        $this->assertDatabaseMissing('students', ['full_name' => 'Bad Slash Date']);
+
+        @unlink($path);
+    }
+
+    public function test_bulk_upload_maps_columns_when_blank_header_in_middle(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $class = SchoolClass::query()->create([
+            'form_level' => 1, 'section' => 'G', 'academic_year' => AcademicYear::current(),
+            'capacity' => 30, 'status' => ClassStatus::Active,
+        ]);
+
+        $path = storage_path('framework/testing-bulk-headers.xlsx');
+        $writer = new \OpenSpout\Writer\XLSX\Writer;
+        $writer->openToFile($path);
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([
+            'full_name', '', 'dob', 'gender', 'city', 'address', 'previous_school',
+            'guardian_name', 'guardian_phone', 'relationship', 'enrollment_date',
+        ]));
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([
+            'Header Gap Kid', '', '2011-04-04', 'Female', 'Hargeisa', '', '',
+            'Parent Gap', '+252634111123', 'Mother', now()->toDateString(),
+        ]));
+        $writer->close();
+
+        $this->actingAs($admin)
+            ->post(route('classes.roster.bulk-upload', $class), [
+                'file' => new \Illuminate\Http\UploadedFile($path, 'headers.xlsx', null, null, true),
+            ])
+            ->assertRedirect();
+
+        $student = Student::query()->where('full_name', 'Header Gap Kid')->first();
+        $this->assertNotNull($student);
+        $this->assertSame('2011-04-04', $student->dob?->toDateString());
+        $this->assertSame(Gender::Female, $student->gender);
+
+        @unlink($path);
     }
 }

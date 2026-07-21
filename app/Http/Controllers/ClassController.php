@@ -3,8 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ClassStatus;
-use App\Enums\StaffRoleLabel;
-use App\Enums\StaffStatus;
 use App\Enums\StudentStatus;
 use App\Enums\WaitlistStatus;
 use App\Models\ClassWaitlist;
@@ -12,12 +10,14 @@ use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\Staff;
 use App\Support\AcademicYear;
+use App\Support\StudentBulkImport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ClassController extends Controller
 {
@@ -36,9 +36,13 @@ class ClassController extends Controller
             ->orderBy('form_level')
             ->orderBy('section');
 
-        if ($user->isTeacher()) {
-            $taughtIds = $user->taughtClassIds($academicYear);
-            $query->whereIn('id', $taughtIds ?: [0]);
+        if (! $user->isAdmin() && ! $user->hasPermission('classes.manage')
+            && ($user->isTeacher() || $user->homeroomClassIds($academicYear) !== [])) {
+            $ids = array_values(array_unique(array_merge(
+                $user->taughtClassIds($academicYear),
+                $user->homeroomClassIds($academicYear),
+            )));
+            $query->whereIn('id', $ids ?: [0]);
         }
 
         $classes = $query->get();
@@ -70,9 +74,7 @@ class ClassController extends Controller
 
         $currentYear = AcademicYear::current();
 
-        $teachers = Staff::query()
-            ->where('role_label', StaffRoleLabel::Teacher)
-            ->where('status', StaffStatus::Active)
+        $teachers = Staff::queryEligibleFormMasters()
             ->orderBy('full_name')
             ->get(['id', 'full_name', 'employee_code']);
 
@@ -218,7 +220,15 @@ class ClassController extends Controller
         $message = 'Class updated successfully.';
         if ((int) $data['capacity'] > $previousCapacity && $waiting > 0 && $openSeats > 0) {
             $message .= " {$waiting} student(s) on the waitlist — open seats available. Enroll them from the class roster.";
+        }
 
+        if ($request->input('return_to') === 'roster') {
+            return redirect()
+                ->route('classes.roster', $schoolClass)
+                ->with('status', $message);
+        }
+
+        if ((int) $data['capacity'] > $previousCapacity && $waiting > 0 && $openSeats > 0) {
             return redirect()
                 ->route('classes.roster', $schoolClass)
                 ->with('status', $message);
@@ -272,10 +282,13 @@ class ClassController extends Controller
             ->with(['student.primaryGuardian'])
             ->get();
 
+        $schoolClass->load(['homeroomTeacher']);
         $schoolClass->loadCount([
             'activeEnrollments as enrolled_count',
             'waitingList as waitlist_count',
         ]);
+
+        $canAssignFormMaster = $request->user()->hasPermission('classes.manage');
 
         return view('classes.roster', [
             'schoolClass' => $schoolClass,
@@ -283,9 +296,110 @@ class ClassController extends Controller
             'waitlist' => $waitlist,
             'search' => $search,
             'statusFilter' => $status,
-            'canAdd' => $request->user()->isAdmin(),
-            'canEnrollWaitlist' => $request->user()->isAdmin(),
+            'canAdd' => $request->user()->hasPermission('students.manage'),
+            'canEnrollWaitlist' => $request->user()->hasPermission('classes.manage'),
+            'canAssignFormMaster' => $canAssignFormMaster,
+            'formMasters' => $canAssignFormMaster
+                ? Staff::queryEligibleFormMasters()
+                    ->orderBy('full_name')
+                    ->get(['id', 'full_name', 'employee_code'])
+                : collect(),
         ]);
+    }
+
+    public function printRoster(Request $request, SchoolClass $schoolClass): View
+    {
+        abort_unless($request->user()->canViewSchoolClass($schoolClass), 403);
+        abort_if($schoolClass->status === ClassStatus::Archived && ! $request->user()->isAdmin(), 404);
+
+        $enrollments = $schoolClass->enrollments()
+            ->with(['student.primaryGuardian'])
+            ->whereHas('student', fn ($q) => $q->where('status', StudentStatus::Active))
+            ->orderBy('roll_number')
+            ->get();
+
+        $schoolClass->load('homeroomTeacher');
+
+        return view('classes.print-roster', [
+            'schoolClass' => $schoolClass,
+            'enrollments' => $enrollments,
+        ]);
+    }
+
+    public function downloadStudentBulkTemplate(Request $request, SchoolClass $schoolClass): BinaryFileResponse
+    {
+        abort_unless($request->user()->canViewSchoolClass($schoolClass), 403);
+        abort_if($schoolClass->status === ClassStatus::Archived, 404);
+
+        return StudentBulkImport::downloadTemplate($schoolClass);
+    }
+
+    public function bulkUploadStudents(Request $request, SchoolClass $schoolClass): RedirectResponse
+    {
+        abort_unless($request->user()->canViewSchoolClass($schoolClass), 403);
+        abort_if($schoolClass->status !== ClassStatus::Active, 404);
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:5120', 'mimes:xlsx,csv,txt'],
+        ]);
+
+        $uploaded = $request->file('file');
+        $path = $uploaded->getRealPath();
+        if ($path === false) {
+            return redirect()
+                ->route('classes.roster', $schoolClass)
+                ->withErrors(['file' => 'Could not read the uploaded file.']);
+        }
+
+        // Format is detected from file contents (not the client filename).
+        $tmp = storage_path('app/tmp-bulk-'.uniqid('', true).'.bin');
+        if (! is_dir(dirname($tmp))) {
+            mkdir(dirname($tmp), 0755, true);
+        }
+        copy($path, $tmp);
+
+        try {
+            $format = StudentBulkImport::detectFormat($tmp);
+            $result = StudentBulkImport::import($schoolClass, $tmp, $format);
+        } catch (\InvalidArgumentException $e) {
+            return redirect()
+                ->route('classes.roster', $schoolClass)
+                ->withErrors(['file' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('classes.roster', $schoolClass)
+                ->withErrors(['file' => 'Could not process the upload. Use the Excel template (.xlsx) or a CSV export.']);
+        } finally {
+            @unlink($tmp);
+        }
+
+        $parts = [];
+        if ($result['imported'] > 0) {
+            $parts[] = $result['imported'].' enrolled';
+        }
+        if ($result['waitlisted'] > 0) {
+            $parts[] = $result['waitlisted'].' waitlisted (class full)';
+        }
+        if (($result['duplicates'] ?? 0) > 0) {
+            $parts[] = $result['duplicates'].' already in school (skipped)';
+        }
+        if ($result['skipped'] > 0) {
+            $parts[] = $result['skipped'].' invalid (skipped)';
+        }
+
+        $status = $parts === []
+            ? 'No student rows were imported. Check the template columns and try again.'
+            : 'Bulk upload finished: '.implode(', ', $parts).'.';
+
+        $redirect = redirect()->route('classes.roster', $schoolClass)->with('status', $status);
+
+        if ($result['errors'] !== []) {
+            $redirect->with('bulk_errors', array_slice($result['errors'], 0, 20));
+        }
+
+        return $redirect;
     }
 
     public function enrollFromWaitlist(SchoolClass $schoolClass, ClassWaitlist $waitlist): RedirectResponse
@@ -364,15 +478,13 @@ class ClassController extends Controller
 
     private function assertActiveTeacher(int $staffId): void
     {
-        $ok = Staff::query()
+        $ok = Staff::queryEligibleFormMasters()
             ->whereKey($staffId)
-            ->where('role_label', StaffRoleLabel::Teacher)
-            ->where('status', StaffStatus::Active)
             ->exists();
 
         if (! $ok) {
             throw ValidationException::withMessages([
-                'homeroom_teacher_id' => 'Select an active teacher as class headmaster.',
+                'homeroom_teacher_id' => 'Select an active teacher or form master as Form Master for this class.',
             ]);
         }
     }

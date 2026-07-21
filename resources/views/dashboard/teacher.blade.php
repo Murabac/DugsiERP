@@ -9,6 +9,8 @@
         :sub="now()->format('l, j F Y').' · Academic Year '.$academicYear"
     />
 
+    @include('partials.staff-checkin-tab')
+
     @unless ($hasStaffLink)
         <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Your login is not linked to a staff record, so timetable data cannot load. Ask an admin to link your account in Settings → Users.

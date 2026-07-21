@@ -22,7 +22,7 @@ class Student extends Model
         'city',
         'previous_school',
         'status',
-        'need_based_discount',
+        'need_based_discount_amount',
     ];
 
     protected function casts(): array
@@ -31,7 +31,7 @@ class Student extends Model
             'dob' => 'date',
             'gender' => Gender::class,
             'status' => StudentStatus::class,
-            'need_based_discount' => 'boolean',
+            'need_based_discount_amount' => 'decimal:2',
         ];
     }
 

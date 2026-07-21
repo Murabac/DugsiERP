@@ -6,6 +6,7 @@ use App\Enums\ClassStatus;
 use App\Enums\WaitlistStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SchoolClass extends Model
@@ -39,6 +40,12 @@ class SchoolClass extends Model
     public function homeroomTeacher(): BelongsTo
     {
         return $this->belongsTo(Staff::class, 'homeroom_teacher_id');
+    }
+
+    public function assignedTeachers(): BelongsToMany
+    {
+        return $this->belongsToMany(Staff::class, 'staff_class_assignments', 'class_id', 'staff_id')
+            ->withTimestamps();
     }
 
     public function waitlistEntries(): HasMany

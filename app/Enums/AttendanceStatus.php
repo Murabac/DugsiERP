@@ -36,4 +36,15 @@ enum AttendanceStatus: string
             default => false,
         };
     }
+
+    /** Symbol used on weekly attendance sheets. */
+    public function markSymbol(): string
+    {
+        return match ($this) {
+            self::Present => '✓',
+            self::Late => '◐',
+            self::Absent => '✗',
+            self::Suspended => '⊘',
+        };
+    }
 }

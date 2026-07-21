@@ -78,7 +78,7 @@ class RolePermissionAuditTest extends TestCase
             'dob' => '2010-01-01',
             'gender' => Gender::Male,
             'status' => StudentStatus::Active,
-            'need_based_discount' => true,
+            'need_based_discount_amount' => 9,
         ]);
 
         Enrollment::query()->create([
@@ -188,7 +188,7 @@ class RolePermissionAuditTest extends TestCase
         $this->actingAs($finance)->get(route('dashboard'))->assertOk();
         $this->actingAs($finance)->get(route('finance.fees-dashboard'))->assertOk();
         $this->actingAs($finance)->get(route('finance.fee-collection'))->assertOk();
-        $this->actingAs($finance)->get(route('finance.expenses'))->assertOk()->assertSee('Expenses is not available yet');
+        $this->actingAs($finance)->get(route('finance.expenses'))->assertOk()->assertSee('Expenses');
         $this->actingAs($finance)->get(route('finance.accounting'))->assertOk()->assertSee('Accounting is not available yet');
         $this->actingAs($finance)->get(route('payroll.index'))->assertOk();
         $this->actingAs($finance)->get(route('documents.index'))->assertOk();
@@ -201,24 +201,24 @@ class RolePermissionAuditTest extends TestCase
     {
         ['teacher' => $teacher] = $this->seedBasics();
 
-        $this->actingAs($teacher)->get(route('grades.boundaries'))->assertForbidden();
+        $this->actingAs($teacher)->get(route('settings.index', ['tab' => 'grades']))->assertForbidden();
     }
 
-    public function test_expenses_and_accounting_hidden_from_sidebar(): void
+    public function test_expenses_shown_accounting_hidden_from_sidebar(): void
     {
         ['admin' => $admin, 'finance' => $finance] = $this->seedBasics();
 
         $this->actingAs($admin)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertDontSee('>Expenses<', false)
-            ->assertDontSee('>Accounting<', false);
+            ->assertSee('Expenses')
+            ->assertDontSee('Accounting');
 
         $this->actingAs($finance)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertDontSee('>Expenses<', false)
-            ->assertDontSee('>Accounting<', false);
+            ->assertSee('Expenses')
+            ->assertDontSee('Accounting');
     }
 
     public function test_admin_sees_fees_tab_and_need_based_on_student_profile(): void

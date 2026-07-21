@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Enums\UserRole;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -20,12 +19,7 @@ class EnsureUserHasRole
             return redirect()->route('login');
         }
 
-        $allowed = array_map(
-            fn (string $role) => UserRole::from($role),
-            $roles
-        );
-
-        if (! $user->hasRole(...$allowed)) {
+        if (! $user->hasRole(...$roles)) {
             abort(403, 'You do not have permission to access this area.');
         }
 

@@ -9,7 +9,13 @@
         ['label' => 'Attendance Report'],
     ]" />
 
-    <x-section-header title="Attendance Report" :sub="'By class, date range, or student · AY '.$academicYear" />
+    <x-section-header title="Attendance Report" :sub="'By class, date range, or student · AY '.$academicYear">
+        <x-slot:action>
+            @if ($applied ?? false)
+                <x-btn variant="secondary" :href="route('reports.attendance.print', request()->query())" target="_blank">Print</x-btn>
+            @endif
+        </x-slot:action>
+    </x-section-header>
 
     <form method="GET" action="{{ route('reports.attendance') }}" class="rounded-lg border border-slate-200 bg-white p-4">
         <input type="hidden" name="apply" value="1">

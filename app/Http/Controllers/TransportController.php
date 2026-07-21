@@ -6,13 +6,11 @@ use App\Enums\StaffRoleLabel;
 use App\Enums\StaffStatus;
 use App\Enums\TransportRouteStatus;
 use App\Enums\VehicleStatus;
-use App\Models\Invoice;
 use App\Models\SchoolSetting;
 use App\Models\Staff;
 use App\Models\TransportRoute;
 use App\Models\Vehicle;
 use App\Support\AcademicYear;
-use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -36,13 +34,6 @@ class TransportController extends Controller
         $seatsTotal = $active->sum(fn (TransportRoute $r) => $r->capacity());
         $seatsUsed = (int) $active->sum('active_assignments_count');
 
-        $monthStart = now()->startOfMonth()->toDateString();
-        $transportBilled = Money::round(
-            (float) Invoice::query()
-                ->whereDate('billing_month', $monthStart)
-                ->sum('transport_fee')
-        );
-
         return view('transport.index', [
             'academicYear' => $year,
             'buses' => $buses,
@@ -51,8 +42,6 @@ class TransportController extends Controller
             'seatsTotal' => $seatsTotal,
             'seatsFree' => max(0, $seatsTotal - $seatsUsed),
             'transportFeeUsd' => SchoolSetting::transportFeeUsd(),
-            'transportBilled' => $transportBilled,
-            'billingMonth' => now()->format('F Y'),
         ]);
     }
 

@@ -4,11 +4,9 @@
 
 @section('content')
 <div class="space-y-4">
-    <x-section-header title="Attendance History" :sub="'Daily summaries by class · '.$academicYear">
-        <x-slot:action>
-            <x-btn href="{{ route('attendance.index', array_filter(['class' => $schoolClass?->id])) }}">Mark Attendance</x-btn>
-        </x-slot:action>
-    </x-section-header>
+    <x-section-header title="Attendance History" :sub="'Daily summaries by class · '.$academicYear" />
+
+    @include('attendance.partials.tabs', ['active' => 'history', 'schoolClass' => $schoolClass])
 
     @if ($classes->isEmpty())
         <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">

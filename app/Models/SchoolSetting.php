@@ -96,6 +96,39 @@ class SchoolSetting extends Model
         return \App\Support\StaffAttendancePunch::lateAfterTime();
     }
 
+    public static function staffAttendanceCheckinStart(): string
+    {
+        return \App\Support\StaffAttendancePunch::checkinStartTime();
+    }
+
+    public static function staffAttendanceCheckoutTime(): string
+    {
+        return \App\Support\StaffAttendancePunch::checkoutTime();
+    }
+
+    /**
+     * @return array{allowed_cidrs: string, checkin_start: string, late_after: string, checkout_time: string}
+     */
+    public static function staffAttendanceSettings(): array
+    {
+        return [
+            'allowed_cidrs' => self::staffAttendanceAllowedCidrs(),
+            'checkin_start' => self::staffAttendanceCheckinStart(),
+            'late_after' => self::staffAttendanceLateAfter(),
+            'checkout_time' => self::staffAttendanceCheckoutTime(),
+        ];
+    }
+
+    /**
+     * Max marks for each academic term (year total = 100).
+     *
+     * @return array<string, float>
+     */
+    public static function termMarkMaxima(): array
+    {
+        return \App\Support\TermMarks::maxima();
+    }
+
     /**
      * @return array{monthly_fee_usd: float, sibling_discount_percent: int, need_based_discount_percent: int, transport_fee_usd: float}
      */

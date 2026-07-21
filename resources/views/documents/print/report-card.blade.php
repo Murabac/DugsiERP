@@ -6,7 +6,7 @@
     <style>
         * { box-sizing: border-box; }
         body { font-family: Georgia, 'Times New Roman', serif; color: #0f172a; margin: 0; padding: 24px; }
-        .sheet { max-width: 800px; margin: 0 auto; }
+        .sheet { max-width: 900px; margin: 0 auto; }
         .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a6e; padding-bottom: 12px; margin-bottom: 16px; }
         .brand { font-size: 20px; font-weight: 700; color: #1e3a6e; }
         .sub { font-size: 12px; color: #64748b; margin-top: 2px; }
@@ -15,6 +15,7 @@
         .meta .label { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th { background: #1e3a6e; color: #fff; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+        th.num, td.num { text-align: center; white-space: nowrap; }
         td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; }
         .summary { display: flex; justify-content: space-between; margin-top: 16px; font-size: 14px; }
         .sigs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 48px; font-size: 12px; text-align: center; }
@@ -25,9 +26,10 @@
 </head>
 <body>
 <div class="sheet">
-    <div class="no-print" style="margin-bottom:16px;display:flex;gap:8px;">
+    <div class="no-print" style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;">
         <button onclick="window.print()" style="padding:8px 14px;background:#1e3a6e;color:#fff;border:0;border-radius:6px;cursor:pointer;">Print / Save PDF</button>
         <a href="{{ route('documents.index', ['tab' => 'history']) }}" style="padding:8px 14px;border:1px solid #cbd5e1;border-radius:6px;text-decoration:none;color:#1e3a6e;">Back</a>
+        <a href="{{ route('modules.home') }}" style="padding:8px 14px;border:1px solid #cbd5e1;border-radius:6px;text-decoration:none;color:#1e3a6e;">Apps</a>
     </div>
     <div class="header">
         <div>
@@ -36,7 +38,7 @@
         </div>
         <div>
             <div class="title">Grade Report Card</div>
-            <div class="sub" style="text-align:right;">{{ $term->label() }} · {{ $academicYear }}</div>
+            <div class="sub" style="text-align:right;">{{ $termLabel }} · {{ $academicYear }}</div>
             <div class="sub" style="text-align:right;">{{ $document->document_number }}</div>
         </div>
     </div>
@@ -49,23 +51,57 @@
         <div><div class="label">Date Issued</div><div>{{ $issuedAt->format('j F Y') }}</div></div>
     </div>
     <table>
-        <thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Remarks</th></tr></thead>
-        <tbody>
-            @foreach ($report['rows'] as $row)
+        @if ($allTerms)
+            <thead>
                 <tr>
-                    <td>{{ $row['subject']->name }}</td>
-                    <td>{{ $row['score'] !== null ? number_format($row['score'], 1).'%' : '—' }}</td>
-                    <td>{{ $row['letter']?->value ?? '—' }}</td>
-                    <td>{{ $row['remarks'] ?? '—' }}</td>
+                    <th>Subject</th>
+                    @foreach ($terms as $t)
+                        <th class="num">{{ $t->label() }}</th>
+                    @endforeach
+                    <th class="num">Total</th>
+                    <th class="num">%</th>
+                    <th class="num">Grade</th>
                 </tr>
-            @endforeach
-        </tbody>
+            </thead>
+            <tbody>
+                @foreach ($report['rows'] as $row)
+                    <tr>
+                        <td>{{ $row['subject']->name }}</td>
+                        @foreach ($terms as $t)
+                            <td class="num">{{ $row['term_scores'][$t->value] !== null ? number_format($row['term_scores'][$t->value], 1) : '—' }}</td>
+                        @endforeach
+                        <td class="num">{{ $row['average_marks'] !== null ? number_format($row['average_marks'], 1) : '—' }}</td>
+                        <td class="num">{{ $row['average'] !== null ? number_format($row['average'], 1).'%' : '—' }}</td>
+                        <td class="num">{{ $row['letter']?->value ?? '—' }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        @else
+            <thead><tr><th>Subject</th><th>Score</th><th>%</th><th>Grade</th><th>Remarks</th></tr></thead>
+            <tbody>
+                @foreach ($report['rows'] as $row)
+                    <tr>
+                        <td>{{ $row['subject']->name }}</td>
+                        <td>{{ $row['marks'] !== null ? number_format($row['marks'], 1) : '—' }}</td>
+                        <td>{{ $row['percent'] !== null ? number_format($row['percent'], 1).'%' : '—' }}</td>
+                        <td>{{ $row['letter']?->value ?? '—' }}</td>
+                        <td>{{ $row['remarks'] ?? '—' }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        @endif
     </table>
     <div class="summary">
         <div>
-            <strong>Term Average:</strong>
+            <strong>{{ $allTerms ? 'Overall Average:' : 'Term Average:' }}</strong>
             @if ($report['average'] !== null)
-                {{ number_format($report['average'], 1) }}%
+                @if ($allTerms)
+                    {{ number_format($report['average_marks'], 1) }}/100
+                    ({{ number_format($report['average'], 1) }}%)
+                @else
+                    {{ number_format($report['average_marks'], 1) }}/{{ number_format($report['term_max'], $report['term_max'] == (int) $report['term_max'] ? 0 : 1) }}
+                    ({{ number_format($report['average'], 1) }}%)
+                @endif
                 @if ($report['average_letter']) ({{ $report['average_letter']->value }}) @endif
             @else — @endif
         </div>

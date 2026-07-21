@@ -1,0 +1,53 @@
+Dugsi ERP — Bluehost quick fix for HTTP 500
+===========================================
+
+1) Document root (most common cause)
+   cPanel → Domains → dugsierp.dispatchagency1.com → Document Root
+   MUST end with /public
+   Example: /home/USER/dugsierp.dispatchagency1.com/public
+   NOT the folder that contains app/, vendor/, .env
+
+2) Upload layout
+   Laravel root (app, bootstrap, config, database, public, resources,
+   routes, storage, vendor, artisan, composer.json, .env)
+   Document root points only at the public folder.
+
+3) .env on the server (copy from .env.example and edit)
+   APP_ENV=production
+   APP_DEBUG=true          ← set true temporarily so you can see the real error
+   APP_KEY=base64:...      ← generate locally: php artisan key:generate --show
+   APP_URL=https://dugsierp.dispatchagency1.com
+   DB_HOST=localhost
+   DB_DATABASE=...         ← Bluehost MySQL database name
+   DB_USERNAME=...
+   DB_PASSWORD=...
+
+4) Permissions (File Manager or SSH)
+   storage/                 → 755 (folders) / 644 (files), writable by PHP
+   bootstrap/cache/         → same
+   Or temporarily 775 on those two folders if writes still fail.
+
+5) Required folders must exist
+   storage/framework/sessions
+   storage/framework/views
+   storage/framework/cache/data
+   storage/logs
+   bootstrap/cache
+
+6) Import SQL
+   phpMyAdmin → import database/deploy/dugsierp_complete.sql
+   into the Bluehost database named in .env
+
+7) Diagnose
+   Upload public/server-check.php then open:
+   https://dugsierp.dispatchagency1.com/server-check.php
+   Fix every FAIL line. Then delete server-check.php.
+
+8) After it works
+   APP_DEBUG=false
+   Delete public/server-check.php
+   Keep MultiPHP on ea-php83
+
+9) Assets
+   Run npm run build locally, upload public/build/ (Vite assets).
+   Without that, pages may load unstyled but should not 500.

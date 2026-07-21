@@ -30,10 +30,13 @@ class AppServiceProvider extends ServiceProvider
         View::composer([
             'layouts.app',
             'layouts.guest',
+            'layouts.print',
             'grades.print',
             'grades.report',
             'attendance.print',
             'timetable.print',
+            'finance.receipt',
+            'payroll.payslip',
         ], function ($view) {
             try {
                 $view->with([

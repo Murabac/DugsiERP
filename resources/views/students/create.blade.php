@@ -137,13 +137,17 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="sm:col-span-2">
-                        <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" name="need_based_discount" value="1" @checked(old('need_based_discount'))
-                                class="rounded border-slate-300 text-dugsi-primary focus:ring-dugsi-primary">
-                            Need-based fee discount
-                        </label>
-                        <p class="mt-1 text-[11px] text-slate-400">Uses the need-based % from Settings → School (same monthly fee for all classes).</p>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-700">Need-based fee discount (USD)</label>
+                        <div class="flex items-center gap-1">
+                            <span class="text-slate-400">$</span>
+                            <input type="number" name="need_based_discount_amount" min="0" max="99999.99" step="0.01"
+                                value="{{ old('need_based_discount_amount', '0') }}"
+                                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary"
+                                placeholder="0.00">
+                        </div>
+                        <p class="mt-1 text-[11px] text-slate-400">Fixed amount off the monthly fee. Enter 0 for none.</p>
+                        @error('need_based_discount_amount')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                     </div>
                 </div>
             </div>

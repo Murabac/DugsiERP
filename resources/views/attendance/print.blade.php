@@ -171,7 +171,10 @@
 </head>
 <body>
     <div class="toolbar no-print">
-        <a href="{{ route('attendance.index', ['class' => $schoolClass->id, 'date' => $date->toDateString()]) }}">← Back to Attendance</a>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+            <a href="{{ route('modules.home') }}">← Apps</a>
+            <a href="{{ route('attendance.index', ['class' => $schoolClass->id, 'date' => $date->toDateString()]) }}">← Back to Attendance</a>
+        </div>
         <button type="button" onclick="window.print()">Print / Save PDF</button>
     </div>
 

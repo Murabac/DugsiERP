@@ -38,8 +38,10 @@ class GradeBoundary extends Model
     {
         $score = max(0, min(100, $score));
 
+        // Match from the top band down by min only so decimals between integer
+        // cutoffs (e.g. 69.6 between C≤69 and B≥70) still resolve — here to C.
         foreach (static::ordered() as $boundary) {
-            if ($score >= $boundary->min_percent && $score <= $boundary->max_percent) {
+            if ($score >= (float) $boundary->min_percent) {
                 return $boundary->letter;
             }
         }

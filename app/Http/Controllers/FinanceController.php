@@ -199,14 +199,14 @@ class FinanceController extends Controller
 
         $query = Invoice::query()
             ->with(['student', 'schoolClass', 'payments' => fn ($q) => $q->latest('paid_at')->latest('id')])
-            ->where('academic_year', $year)
-            ->whereDate('billing_month', $billingMonth->toDateString());
+            ->where('invoices.academic_year', $year)
+            ->whereDate('invoices.billing_month', $billingMonth->toDateString());
 
         if ($statusFilter !== '' && InvoiceStatus::tryFrom($statusFilter)) {
-            $query->where('status', $statusFilter);
+            $query->where('invoices.status', $statusFilter);
         }
         if ($classId > 0) {
-            $query->where('class_id', $classId);
+            $query->where('invoices.class_id', $classId);
         }
         if ($q !== '') {
             $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $q).'%';
@@ -256,6 +256,71 @@ class FinanceController extends Controller
             'isFutureMonth' => $isFutureMonth,
             'canEnsureMonth' => $feeConfigured && ! $isFutureMonth,
             'monthNeedsEnsure' => $feeConfigured && ! $isFutureMonth && $invoiceCountForMonth === 0,
+            'totals' => [
+                'due' => Money::round($invoices->sum(fn (Invoice $i) => (float) $i->amount_due)),
+                'paid' => Money::round($invoices->sum(fn (Invoice $i) => (float) $i->amount_paid)),
+                'balance' => Money::round($invoices->sum(fn (Invoice $i) => $i->balance())),
+            ],
+        ]);
+    }
+
+    public function printCollection(Request $request): View
+    {
+        $year = AcademicYear::current();
+        $bounds = AcademicYear::feeMonthBounds();
+        $month = $request->query('month', now()->format('Y-m'));
+        try {
+            $billingMonth = FeeCalculator::billingMonthStart($month.'-01');
+            $month = $billingMonth->format('Y-m');
+            if ($month < $bounds['min']) {
+                $billingMonth = FeeCalculator::billingMonthStart($bounds['min'].'-01');
+            } elseif ($month > $bounds['max']) {
+                $billingMonth = FeeCalculator::billingMonthStart($bounds['max'].'-01');
+            }
+        } catch (\Throwable) {
+            $billingMonth = now()->startOfMonth();
+        }
+
+        $classes = SchoolClass::query()
+            ->where('status', ClassStatus::Active)
+            ->where('academic_year', $year)
+            ->orderBy('form_level')
+            ->orderBy('section')
+            ->get();
+
+        $statusFilter = (string) $request->query('status', '');
+        $classId = (int) $request->query('class', 0);
+        $q = trim((string) $request->query('q', ''));
+
+        $query = Invoice::query()
+            ->with(['student', 'schoolClass', 'payments' => fn ($p) => $p->latest('paid_at')->latest('id')])
+            ->where('invoices.academic_year', $year)
+            ->whereDate('invoices.billing_month', $billingMonth->toDateString());
+
+        if ($statusFilter !== '' && InvoiceStatus::tryFrom($statusFilter)) {
+            $query->where('invoices.status', $statusFilter);
+        }
+        if ($classId > 0) {
+            $query->where('invoices.class_id', $classId);
+        }
+        if ($q !== '') {
+            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $q).'%';
+            $query->whereHas('student', fn ($s) => $s->where('full_name', 'like', $like)
+                ->orWhere('student_code', 'like', $like));
+        }
+
+        $invoices = $query
+            ->join('students', 'students.id', '=', 'invoices.student_id')
+            ->orderBy('students.full_name')
+            ->select('invoices.*')
+            ->get();
+
+        return view('finance.print-fee-collection', [
+            'academicYear' => $year,
+            'billingMonth' => $billingMonth,
+            'classes' => $classes,
+            'classId' => $classId,
+            'invoices' => $invoices,
             'totals' => [
                 'due' => Money::round($invoices->sum(fn (Invoice $i) => (float) $i->amount_due)),
                 'paid' => Money::round($invoices->sum(fn (Invoice $i) => (float) $i->amount_paid)),

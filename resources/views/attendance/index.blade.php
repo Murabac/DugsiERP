@@ -10,7 +10,6 @@
 <div class="mx-auto max-w-2xl space-y-4">
     <x-section-header title="Mark Attendance" :sub="'Select class and date, then mark each student · '.$academicYear">
         <x-slot:action>
-            <x-btn variant="secondary" href="{{ route('attendance.history', array_filter(['class' => $schoolClass?->id])) }}">History</x-btn>
             @if ($schoolClass)
                 <x-btn variant="secondary" :href="route('attendance.print', ['class' => $schoolClass->id, 'date' => $date])" target="_blank" rel="noopener">
                     <x-icon name="printer" :size="14" /> Print View
@@ -18,6 +17,8 @@
             @endif
         </x-slot:action>
     </x-section-header>
+
+    @include('attendance.partials.tabs', ['active' => 'mark', 'schoolClass' => $schoolClass])
 
     @if ($classes->isEmpty())
         <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
@@ -40,21 +41,29 @@
                 </div>
                 <div>
                     <label class="mb-1 block text-xs font-medium text-slate-700">Date</label>
-                    <input type="date" name="date" value="{{ $date }}" onchange="this.form.submit()"
+                    <input type="date" name="date" value="{{ $date }}" max="{{ $today }}" onchange="this.form.submit()"
                         class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
                 </div>
             </div>
         </form>
 
-        @unless ($isSchoolDay)
+        @if ($isFuture)
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Future dates cannot be marked. Choose today or an earlier date.
+            </div>
+        @elseif (! $isSchoolDay)
             <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 {{ \Illuminate\Support\Carbon::parse($date)->format('l') }} is outside the school week (Sat–Wed). You can still record attendance if needed.
             </div>
-        @endunless
+        @endif
 
         @if ($rows->isEmpty())
             <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
                 No active students enrolled in {{ $schoolClass->displayName() }}.
+            </div>
+        @elseif ($isFuture)
+            <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+                Attendance for {{ $dateLabel }} is not available yet.
             </div>
         @else
             <form method="POST" action="{{ route('attendance.store') }}" id="attendance-form">
@@ -99,7 +108,8 @@
                                                     name="statuses[{{ $sid }}]"
                                                     value="{{ $status->value }}"
                                                     class="att-status sr-only"
-                                                    @checked($active)>
+                                                    @checked($active)
+                                                    @if ($loop->first) required @endif>
                                                 <span class="att-btn {{ $active ? 'is-active' : '' }}" data-status="{{ $status->value }}">
                                                     {{ $status->value }}
                                                 </span>
@@ -136,8 +146,15 @@
                     </div>
                     <div id="sms-list" class="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3"></div>
                     <div class="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-slate-600">
-                        <div class="mb-1 font-semibold text-slate-700">SMS Preview:</div>
-                        <p class="italic">"Dear parent, your child [student_name] was absent from school on {{ $dateLabel }}. Please contact the school. — Dugsi ERP"</p>
+                        <div class="mb-1 font-semibold text-slate-700">SMS Preview (Absence Alert template):</div>
+                        @if ($absenceSmsEnabled)
+                            <p class="italic" id="sms-preview-text">""</p>
+                            <p class="mt-1 text-[11px] text-slate-500" id="sms-preview-note" hidden>Example uses the first absent student; each SMS is personalized.</p>
+                        @else
+                            <p class="text-amber-800">Absence Alert template is inactive — SMS will not be sent. Enable it under Notifications → Templates.</p>
+                            <p class="italic hidden" id="sms-preview-text"></p>
+                            <p class="mt-1 text-[11px] text-slate-500 hidden" id="sms-preview-note"></p>
+                        @endif
                     </div>
                 </div>
                 <div class="flex flex-col-reverse gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
@@ -149,22 +166,28 @@
     @endif
 </div>
 
-@if ($classes->isNotEmpty() && $rows->isNotEmpty())
+@if ($classes->isNotEmpty() && $rows->isNotEmpty() && ! $isFuture)
 <script>
 (() => {
     const form = document.getElementById('attendance-form');
     const sendInput = document.getElementById('send-sms-input');
     const smsList = document.getElementById('sms-list');
     const smsCount = document.getElementById('sms-count');
+    const smsPreview = document.getElementById('sms-preview-text');
+    const smsPreviewNote = document.getElementById('sms-preview-note');
+    const absenceTemplate = @json($absenceSmsTemplate);
+    const absenceClass = @json($absenceSmsClass);
+    const absenceDate = @json($absenceSmsDate);
+    const absenceSmsEnabled = @json($absenceSmsEnabled);
 
     function selectedStatus(row) {
-        return row.querySelector('input.att-status:checked')?.value ?? 'present';
+        return row.querySelector('input.att-status:checked')?.value ?? null;
     }
 
     function syncRow(row) {
         const status = selectedStatus(row);
         row.querySelectorAll('.att-btn').forEach((btn) => {
-            btn.classList.toggle('is-active', btn.dataset.status === status);
+            btn.classList.toggle('is-active', status !== null && btn.dataset.status === status);
         });
         row.querySelector('.att-reason')?.classList.toggle('hidden', status !== 'absent' && status !== 'suspended');
     }
@@ -173,7 +196,7 @@
         const counts = { present: 0, late: 0, absent: 0, suspended: 0 };
         document.querySelectorAll('.att-row').forEach((row) => {
             const status = selectedStatus(row);
-            if (counts[status] !== undefined) counts[status] += 1;
+            if (status && counts[status] !== undefined) counts[status] += 1;
             syncRow(row);
         });
         document.querySelectorAll('[data-count]').forEach((el) => {
@@ -183,6 +206,10 @@
 
     function absences() {
         return [...document.querySelectorAll('.att-row')].filter((row) => selectedStatus(row) === 'absent');
+    }
+
+    function unmarkedRows() {
+        return [...document.querySelectorAll('.att-row')].filter((row) => !selectedStatus(row));
     }
 
     function submitWithSms(send) {
@@ -198,11 +225,38 @@
             .replaceAll('"', '&quot;');
     }
 
+    function fillTemplate(template, vars) {
+        return String(template)
+            .replaceAll('{student_name}', vars.student_name ?? '')
+            .replaceAll('{class}', vars.class ?? '')
+            .replaceAll('{date}', vars.date ?? '');
+    }
+
+    function updateSmsPreview(list) {
+        if (! smsPreview || ! absenceSmsEnabled) return;
+        const first = list[0];
+        const name = first?.dataset.studentName || 'Student';
+        smsPreview.textContent = '"' + fillTemplate(absenceTemplate, {
+            student_name: name,
+            class: absenceClass,
+            date: absenceDate,
+        }) + '"';
+        if (smsPreviewNote) {
+            smsPreviewNote.hidden = list.length < 2;
+        }
+    }
+
     document.querySelectorAll('input.att-status').forEach((input) => {
         input.addEventListener('change', () => refreshCounts());
     });
 
     document.getElementById('btn-save-attendance')?.addEventListener('click', () => {
+        const unmarked = unmarkedRows();
+        if (unmarked.length > 0) {
+            window.DugsiUI?.error('Mark a status for every student before saving.');
+            unmarked[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
         const list = absences();
         if (list.length === 0) {
             submitWithSms(false);
@@ -214,6 +268,7 @@
             const phone = escapeHtml(row.dataset.phone || 'No phone');
             return `<div class="flex items-center justify-between gap-2 text-sm"><span class="text-slate-700">${name}</span><span class="font-mono text-xs text-slate-400">${phone}</span></div>`;
         }).join('');
+        updateSmsPreview(list);
         window.DugsiUI?.openModal('#sms-modal');
     });
 

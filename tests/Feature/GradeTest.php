@@ -22,6 +22,7 @@ use App\Models\User;
 use App\Support\AcademicYear;
 use App\Support\GradeScale;
 use App\Support\SchoolWeek;
+use App\Support\TermMarks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -33,6 +34,13 @@ class GradeTest extends TestCase
     {
         parent::setUp();
         GradeBoundary::seedDefaults();
+    }
+
+    private function marksFor(float $percent, AcademicTerm|string $term): float
+    {
+        $resolved = $term instanceof AcademicTerm ? $term : AcademicTerm::from($term);
+
+        return TermMarks::marksFromPercent($percent, $resolved);
     }
 
     /**
@@ -108,6 +116,12 @@ class GradeTest extends TestCase
         $this->assertSame(LetterGrade::D, GradeScale::letterFor(40));
         $this->assertSame(LetterGrade::F, GradeScale::letterFor(39));
         $this->assertSame(LetterGrade::F, GradeScale::letterFor(0));
+
+        // Combined averages often land between integer cutoffs (C max 69, B min 70).
+        $this->assertSame(LetterGrade::C, GradeScale::letterFor(69.6));
+        $this->assertSame(LetterGrade::C, GradeScale::letterFor(69.9));
+        $this->assertSame(LetterGrade::B, GradeScale::letterFor(84.5));
+        $this->assertSame(LetterGrade::B, GradeScale::letterFor(84.999));
     }
 
     public function test_admin_can_enter_and_save_grades(): void
@@ -130,7 +144,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term,
-                'scores' => [$student->id => 88],
+                'scores' => [$student->id => $this->marksFor(88, $term)],
                 'remarks' => [$student->id => 'Excellent'],
             ])
             ->assertRedirect(route('grades.index', [
@@ -144,6 +158,8 @@ class GradeTest extends TestCase
             'class_id' => $class->id,
             'subject_id' => $subject->id,
             'term' => $term,
+            'score_marks' => 17.6,
+            'score_percent' => 88,
             'letter_grade' => LetterGrade::A->value,
             'remarks' => 'Excellent',
             'entered_by' => $admin->id,
@@ -167,7 +183,7 @@ class GradeTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('grades.boundaries.update'), $payload)
-            ->assertRedirect(route('grades.boundaries'));
+            ->assertRedirect(route('settings.index', ['tab' => 'grades']));
 
         $this->assertDatabaseHas('grade_boundaries', [
             'letter' => 'A',
@@ -180,6 +196,43 @@ class GradeTest extends TestCase
 
         $this->actingAs($teacher)
             ->get(route('grades.boundaries'))
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_save_term_mark_splits(): void
+    {
+        $admin = User::factory()->role(UserRole::Admin)->create();
+        $teacher = User::factory()->role(UserRole::Teacher)->create();
+
+        $payload = [
+            'term_marks' => [
+                AcademicTerm::Term1->value => 25,
+                AcademicTerm::Term2->value => 25,
+                AcademicTerm::Term3->value => 25,
+                AcademicTerm::FinalExam->value => 25,
+            ],
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('settings.term-marks'), $payload)
+            ->assertRedirect(route('settings.index', ['tab' => 'grades']));
+
+        $this->assertSame(25.0, TermMarks::maxFor(AcademicTerm::Term1));
+        $this->assertSame(100.0, TermMarks::yearTotal());
+
+        $this->actingAs($admin)
+            ->post(route('settings.term-marks'), [
+                'term_marks' => [
+                    AcademicTerm::Term1->value => 30,
+                    AcademicTerm::Term2->value => 20,
+                    AcademicTerm::Term3->value => 20,
+                    AcademicTerm::FinalExam->value => 20,
+                ],
+            ])
+            ->assertSessionHasErrors('term_marks');
+
+        $this->actingAs($teacher)
+            ->post(route('settings.term-marks'), $payload)
             ->assertForbidden();
     }
 
@@ -296,7 +349,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => AcademicTerm::Term1->value,
-                'scores' => [$student->id => 72],
+                'scores' => [$student->id => $this->marksFor(72, AcademicTerm::Term1)],
             ])
             ->assertRedirect();
 
@@ -319,7 +372,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term,
-                'scores' => [$student->id => 65],
+                'scores' => [$student->id => $this->marksFor(65, $term)],
             ])
             ->assertRedirect();
 
@@ -355,7 +408,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 75],
+                'scores' => [$student->id => $this->marksFor(75, $term)],
             ])
             ->assertRedirect();
 
@@ -395,7 +448,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 80],
+                'scores' => [$student->id => $this->marksFor(80, $term)],
             ])
             ->assertInvalid(['edit_notes.'.$student->id]);
 
@@ -404,7 +457,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 80],
+                'scores' => [$student->id => $this->marksFor(80, $term)],
                 'edit_notes' => [$student->id => 'Corrected marking error'],
             ])
             ->assertRedirect();
@@ -413,7 +466,7 @@ class GradeTest extends TestCase
         $this->assertDatabaseHas('grade_edit_logs', [
             'edited_by' => $teacher->id,
             'note' => 'Corrected marking error',
-            'new_score' => 80,
+            'new_score' => 16,
         ]);
     }
 
@@ -441,7 +494,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 90],
+                'scores' => [$student->id => $this->marksFor(90, $term)],
                 'edit_notes' => [$student->id => 'Too late'],
             ])
             ->assertRedirect();
@@ -481,7 +534,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 88],
+                'scores' => [$student->id => $this->marksFor(88, $term)],
             ])
             ->assertInvalid(['edit_notes.'.$student->id]);
 
@@ -490,7 +543,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 88],
+                'scores' => [$student->id => $this->marksFor(88, $term)],
                 'edit_notes' => [$student->id => 'Admin correction'],
             ])
             ->assertRedirect();
@@ -613,6 +666,67 @@ class GradeTest extends TestCase
             ->assertSee('Grade Report Card');
     }
 
+    public function test_form_master_can_grade_all_subjects_for_assigned_class(): void
+    {
+        ['class' => $class, 'student' => $student, 'subject' => $subject] = $this->seedClassWithStudent();
+        $english = Subject::query()->create(['name' => 'English', 'sort_order' => 2]);
+
+        $role = \App\Models\Role::query()->create([
+            'key' => 'form_master',
+            'name' => 'Form Master',
+            'is_system' => false,
+            'sort_order' => 40,
+        ]);
+        $role->syncPermissionKeys(\App\Support\PermissionCatalog::defaultsFor('teacher'));
+
+        $staff = Staff::query()->create([
+            'employee_code' => 'EMP-FM',
+            'full_name' => 'Form Master Staff',
+            'role_label' => 'form_master',
+            'status' => StaffStatus::Active,
+        ]);
+        $formMaster = User::factory()->create([
+            'role' => 'form_master',
+            'staff_id' => $staff->id,
+        ]);
+        $class->update(['homeroom_teacher_id' => $staff->id]);
+
+        // No timetable slots — Form Master still grades every subject for their class.
+        $this->actingAs($formMaster)
+            ->get(route('grades.index', [
+                'class' => $class->id,
+                'subject' => $subject->id,
+                'term' => AcademicTerm::Term1->value,
+            ]))
+            ->assertOk()
+            ->assertSee($student->full_name)
+            ->assertSee($subject->name)
+            ->assertSee($english->name);
+
+        $this->actingAs($formMaster)
+            ->get(route('grades.index', [
+                'class' => $class->id,
+                'subject' => $english->id,
+                'term' => AcademicTerm::Term1->value,
+            ]))
+            ->assertOk();
+
+        $this->actingAs($formMaster)
+            ->post(route('grades.store'), [
+                'class_id' => $class->id,
+                'subject_id' => $english->id,
+                'term' => AcademicTerm::Term1->value,
+                'scores' => [$student->id => $this->marksFor(80, AcademicTerm::Term1)],
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('grades', [
+            'student_id' => $student->id,
+            'subject_id' => $english->id,
+            'class_id' => $class->id,
+        ]);
+    }
+
     public function test_student_profile_grades_tab(): void
     {
         ['admin' => $admin, 'class' => $class, 'student' => $student, 'subject' => $subject] = $this->seedClassWithStudent();
@@ -682,8 +796,8 @@ class GradeTest extends TestCase
                 'subject_id' => $subject->id,
                 'term' => $term->value,
                 'scores' => [
-                    $first->id => 90,
-                    $second->id => 91,
+                    $first->id => $this->marksFor(90, $term),
+                    $second->id => $this->marksFor(91, $term),
                 ],
                 'edit_notes' => [
                     $first->id => 'Fixed first only',
@@ -703,11 +817,32 @@ class GradeTest extends TestCase
         $english = Subject::query()->create(['name' => 'English', 'sort_order' => 2]);
 
         $this->actingAs($teacher)
+            ->get(route('grades.index', [
+                'class' => $class->id,
+                'subject' => $math->id,
+                'term' => AcademicTerm::Term1->value,
+            ]))
+            ->assertOk()
+            ->assertSee($math->name)
+            ->assertDontSee($english->name);
+
+        // Stale subject in the query (e.g. after switching class) falls back to a taught subject.
+        $this->actingAs($teacher)
+            ->get(route('grades.index', [
+                'class' => $class->id,
+                'subject' => $english->id,
+                'term' => AcademicTerm::Term1->value,
+            ]))
+            ->assertOk()
+            ->assertSee($math->name)
+            ->assertDontSee($english->name);
+
+        $this->actingAs($teacher)
             ->post(route('grades.store'), [
                 'class_id' => $class->id,
                 'subject_id' => $english->id,
                 'term' => AcademicTerm::Term1->value,
-                'scores' => [$student->id => 80],
+                'scores' => [$student->id => $this->marksFor(80, AcademicTerm::Term1)],
             ])
             ->assertForbidden();
     }
@@ -772,7 +907,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 70],
+                'scores' => [$student->id => $this->marksFor(70, $term)],
                 'remarks' => [$student->id => 'New remark'],
             ])
             ->assertInvalid(['edit_notes.'.$student->id]);
@@ -782,7 +917,7 @@ class GradeTest extends TestCase
                 'class_id' => $class->id,
                 'subject_id' => $subject->id,
                 'term' => $term->value,
-                'scores' => [$student->id => 70],
+                'scores' => [$student->id => $this->marksFor(70, $term)],
                 'remarks' => [$student->id => 'New remark'],
                 'edit_notes' => [$student->id => 'Clarified remark'],
             ])

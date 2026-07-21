@@ -12,6 +12,8 @@
         </x-slot:action>
     </x-section-header>
 
+    @include('partials.staff-checkin-tab')
+
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         @foreach ($stats as $i => $stat)
             <x-stat-card

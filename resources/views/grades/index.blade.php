@@ -10,11 +10,11 @@
 <div class="space-y-4">
     <x-section-header
         title="Grades"
-        :sub="'Enter scores · teachers can edit for '.$gradeEditWindowDays.' day'.($gradeEditWindowDays === 1 ? '' : 's').' after first save · '.$academicYear"
+        :sub="'Enter marks (out of term max) · teachers can edit for '.$gradeEditWindowDays.' day'.($gradeEditWindowDays === 1 ? '' : 's').' after first save · '.$academicYear"
     >
         <x-slot:action>
-            @if (auth()->user()?->isAdmin())
-                <x-btn variant="secondary" href="{{ route('grades.boundaries') }}">Boundaries</x-btn>
+            @if ($schoolClass && $subject)
+                <x-btn variant="secondary" href="{{ route('grades.sheet.print', ['class' => $schoolClass->id, 'subject' => $subject->id, 'term' => $term->value]) }}">Print mark sheet</x-btn>
             @endif
             @if ($canGenerateReports)
                 <x-btn variant="secondary" :href="route('grades.report', array_filter([
@@ -27,9 +27,6 @@
 
     <div class="flex gap-1 border-b border-slate-200 text-sm">
         <span class="border-b-2 border-dugsi-primary px-3 py-2 font-semibold text-dugsi-primary">Grade Entry</span>
-        @if (auth()->user()?->isAdmin())
-            <a href="{{ route('grades.boundaries') }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Boundaries</a>
-        @endif
         @if ($canGenerateReports)
             <a href="{{ route('grades.report', array_filter([
                     'class' => $canGenerateReportForClass ? $schoolClass?->id : null,
@@ -53,7 +50,7 @@
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                     <label class="mb-1 block text-xs font-medium text-slate-700">Class</label>
-                    <select name="class" onchange="this.form.submit()" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                    <select name="class" onchange="this.form.querySelector('[name=subject]').disabled = true; this.form.submit()" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
                         @foreach ($classes as $c)
                             <option value="{{ $c->id }}" @selected($schoolClass?->id === $c->id)>{{ $c->displayName() }}</option>
                         @endforeach
@@ -93,12 +90,14 @@
                     <div class="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-700">
                             {{ $schoolClass->displayName() }} — {{ $subject->name }} · {{ $term->label() }}
+                            <span class="font-medium normal-case text-slate-400">(out of {{ number_format($termMax, $termMax == (int) $termMax ? 0 : 1) }})</span>
                         </h3>
                         <div class="flex flex-wrap items-center gap-3">
                             @if ($classAverage !== null)
                                 <div class="text-xs text-slate-500">
                                     Class average:
-                                    <span class="font-semibold text-slate-800">{{ number_format($classAverage, 1) }}%</span>
+                                    <span class="font-semibold text-slate-800">{{ number_format($classAverageMarks, 1) }}/{{ number_format($termMax, $termMax == (int) $termMax ? 0 : 1) }}</span>
+                                    <span class="text-slate-400">({{ number_format($classAverage, 1) }}%)</span>
                                     @if ($classAverageLetter)
                                         <span class="ml-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold {{ $classAverageLetter->badgeClass() }}">{{ $classAverageLetter->value }}</span>
                                     @endif
@@ -109,10 +108,10 @@
                     </div>
 
                     <div class="overflow-x-auto">
-                        <table class="w-full min-w-[720px] text-sm">
+                        <table class="w-full min-w-[780px] text-sm">
                             <thead>
                                 <tr class="border-b border-slate-100 bg-slate-50">
-                                    @foreach (array_filter(['#', 'Student', 'Score', 'Grade', 'Remarks', 'Edit note', $canViewEditHistory ? 'History' : null]) as $h)
+                                    @foreach (array_filter(['#', 'Student', 'Score', '%', 'Grade', 'Remarks', 'Edit note', $canViewEditHistory ? 'History' : null]) as $h)
                                         <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{{ $h }}</th>
                                     @endforeach
                                 </tr>
@@ -149,10 +148,13 @@
                                                 <span class="font-medium text-slate-800">{{ $row['score'] !== '' ? number_format((float) $row['score'], 1) : '—' }}</span>
                                             @else
                                                 <input type="number" name="scores[{{ $student->id }}]" value="{{ $row['score'] }}"
-                                                    min="0" max="100" step="0.01" inputmode="decimal"
+                                                    min="0" max="{{ $termMax }}" step="0.01" inputmode="decimal"
                                                     class="grade-score w-24 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary"
-                                                    placeholder="0–100">
+                                                    placeholder="0–{{ number_format($termMax, $termMax == (int) $termMax ? 0 : 1) }}">
                                             @endif
+                                        </td>
+                                        <td class="px-4 py-2.5">
+                                            <span class="grade-percent text-slate-700">{{ $row['percent'] !== null ? number_format($row['percent'], 1).'%' : '—' }}</span>
                                         </td>
                                         <td class="px-4 py-2.5">
                                             <span class="grade-letter inline-flex min-w-[1.5rem] justify-center rounded px-1.5 py-0.5 text-xs font-bold {{ $letter ? $letter->badgeClass() : 'bg-slate-50 text-slate-400' }}">
@@ -230,7 +232,8 @@
                                 <tfoot>
                                     <tr class="border-t-2 border-slate-200 bg-slate-50">
                                         <td colspan="2" class="px-4 py-2.5 text-sm font-semibold text-slate-700">Class Average</td>
-                                        <td class="px-4 py-2.5 font-bold text-slate-900">{{ number_format($classAverage, 1) }}%</td>
+                                        <td class="px-4 py-2.5 font-bold text-slate-900">{{ number_format($classAverageMarks, 1) }}</td>
+                                        <td class="px-4 py-2.5 font-semibold text-slate-800">{{ number_format($classAverage, 1) }}%</td>
                                         <td class="px-4 py-2.5">
                                             @if ($classAverageLetter)
                                                 <span class="inline-flex rounded px-1.5 py-0.5 text-xs font-bold {{ $classAverageLetter->badgeClass() }}">{{ $classAverageLetter->value }}</span>
@@ -245,6 +248,7 @@
 
                     <div class="flex flex-col gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <p class="text-xs text-slate-400">
+                            Enter the actual mark for this term (max {{ number_format($termMax, $termMax == (int) $termMax ? 0 : 1) }}). Percentage and letter grade are calculated automatically.
                             @unless ($isAdminGrader)
                                 After day 1, changing a score or remarks needs an edit note. After {{ $gradeEditWindowDays }} days, grades lock (admins can still correct with a note). Clearing a saved score is not allowed.
                             @else
@@ -263,19 +267,28 @@
 <script>
 (() => {
     const boundaries = @json($boundaryJs);
+    const termMax = {{ (float) $termMax }};
     const badgeFallback = 'bg-slate-50 text-slate-400';
 
-    function letterFor(score) {
-        if (score === '' || score === null || Number.isNaN(Number(score))) return null;
-        const n = Math.max(0, Math.min(100, Number(score)));
+    function percentFor(marks) {
+        if (marks === '' || marks === null || Number.isNaN(Number(marks)) || termMax <= 0) return null;
+        return Math.round((Number(marks) / termMax) * 10000) / 100;
+    }
+
+    function letterFor(percent) {
+        if (percent === null || Number.isNaN(Number(percent))) return null;
+        const n = Math.max(0, Math.min(100, Number(percent)));
         return boundaries.find(b => n >= b.min && n <= b.max) || null;
     }
 
     document.querySelectorAll('.grade-score').forEach(input => {
         input.addEventListener('input', () => {
             const row = input.closest('.grade-row');
+            const percentEl = row.querySelector('.grade-percent');
             const badge = row.querySelector('.grade-letter');
-            const match = letterFor(input.value);
+            const percent = percentFor(input.value);
+            percentEl.textContent = percent !== null ? percent.toFixed(1) + '%' : '—';
+            const match = letterFor(percent);
             badge.className = 'grade-letter inline-flex min-w-[1.5rem] justify-center rounded px-1.5 py-0.5 text-xs font-bold ' + (match ? match.cls : badgeFallback);
             badge.textContent = match ? match.letter : '—';
         });

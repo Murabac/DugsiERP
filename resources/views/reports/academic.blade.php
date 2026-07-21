@@ -12,7 +12,13 @@
         ['label' => 'Academic Performance'],
     ]" />
 
-    <x-section-header title="Academic Performance" :sub="'By class, subject, and one or more terms · AY '.$academicYear" />
+    <x-section-header title="Academic Performance" :sub="'By class, subject, and one or more terms · AY '.$academicYear">
+        <x-slot:action>
+            @if ($applied ?? false)
+                <x-btn variant="secondary" :href="route('reports.academic.print', request()->query())" target="_blank">Print</x-btn>
+            @endif
+        </x-slot:action>
+    </x-section-header>
 
     <form method="GET" action="{{ route('reports.academic') }}" class="rounded-lg border border-slate-200 bg-white p-4">
         <input type="hidden" name="apply" value="1">

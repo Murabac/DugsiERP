@@ -19,16 +19,16 @@
                     <div>
                         <h3 class="text-base font-semibold text-slate-900">{{ $staff->full_name }}</h3>
                         <div class="mt-0.5 font-mono text-xs text-slate-500">
-                            {{ $staff->employee_code }} · {{ $staff->role_label->label() }}
-                            @if ($staff->subject_specialty)
-                                · {{ $staff->subject_specialty }}
+                            {{ $staff->employee_code }} · {{ $staff->roleDisplayName() }}
+                            @if ($staff->subjectsDisplay() !== '')
+                                · {{ $staff->subjectsDisplay() }}
                             @endif
                         </div>
                     </div>
                     <div class="flex flex-shrink-0 items-center gap-2">
                         <x-status-badge :status="$staff->status" />
                         @if ($canEdit)
-                            <button type="button" data-dugsi-open="#edit-staff-modal" data-dugsi-width="32rem"
+                            <button type="button" data-dugsi-open="#edit-staff-modal" data-dugsi-width="40rem"
                                 class="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">
                                 Edit
                             </button>
@@ -36,7 +36,7 @@
                     </div>
                 </div>
                 <div class="mt-2.5 flex flex-wrap gap-4">
-                    <span class="text-xs text-slate-500">{{ $staff->phone ?? 'No phone' }}</span>
+                    <span class="text-xs text-slate-500">{{ $staff->phonesDisplay() !== '' ? $staff->phonesDisplay() : 'No phone' }}</span>
                     <span class="text-xs text-slate-500">Joined {{ $staff->date_joined?->format('d M Y') ?? '—' }}</span>
                     @if ($staff->user)
                         <span class="text-xs text-green-700">Login: {{ $staff->user->email }}</span>
@@ -48,11 +48,49 @@
         </div>
     </div>
 
+    @if (session('login_credentials'))
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <div class="font-semibold">Login account created</div>
+            <div class="mt-1 text-xs sm:text-sm">
+                Email: <strong class="font-mono">{{ session('login_credentials')['email'] }}</strong>
+                · Temporary password: <strong class="font-mono">{{ session('login_credentials')['password'] }}</strong>
+            </div>
+            <p class="mt-1 text-xs text-emerald-800/80">Ask them to change this password after first login.</p>
+        </div>
+    @elseif ($staff->user && $canEdit)
+        <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <div class="font-medium text-slate-900">System login</div>
+            <div class="mt-1 text-xs sm:text-sm">
+                Email: <strong class="font-mono">{{ $staff->user->email }}</strong>
+                · Role: {{ $staff->user->roleLabel() }}
+                · {{ $staff->user->is_active ? 'Active' : 'Inactive' }}
+            </div>
+            <form method="POST" action="{{ route('staff.reset-login-password', $staff) }}" class="mt-2"
+                data-dugsi-confirm="Reset login password to: password ?"
+                data-dugsi-confirm-title="Reset password"
+                data-dugsi-confirm-ok="Reset">
+                @csrf
+                <button type="submit" class="text-xs font-medium text-blue-700 hover:underline">Reset password to “password”</button>
+            </form>
+        </div>
+    @endif
+
     <div class="flex w-full max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 sm:w-fit">
         <a href="{{ route('staff.show', ['staff' => $staff, 'tab' => 'overview']) }}"
             class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors {{ ($tab ?? 'overview') === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
             Overview
         </a>
+        @if (($checkinAction ?? null) === 'check_in')
+            <a href="{{ $staff->checkinUrl() }}"
+                class="whitespace-nowrap rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
+                Check in
+            </a>
+        @elseif (($checkinAction ?? null) === 'check_out')
+            <a href="{{ $staff->checkinUrl() }}"
+                class="whitespace-nowrap rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">
+                Check out
+            </a>
+        @endif
         <span class="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium text-slate-400">Assignments</span>
         @if ($canSeeSalary)
             <a href="{{ route('staff.show', ['staff' => $staff, 'tab' => 'payroll']) }}"
@@ -115,7 +153,9 @@
                             ['Employee ID', $staff->employee_code],
                             ['Gender', $staff->gender?->label() ?? '—'],
                             ['DOB', $staff->dob?->format('Y-m-d') ?? '—'],
-                            ['Phone', $staff->phone ?? '—'],
+                            ['Phone', $staff->phonesDisplay() !== '' ? $staff->phonesDisplay() : '—'],
+                            ['Subjects', $staff->subjectsDisplay() !== '' ? $staff->subjectsDisplay() : '—'],
+                            ['Attend days', $staff->roleKey() === 'finance' ? '—' : $staff->workDaysDisplay()],
                         ] as [$k, $v])
                             <div class="flex gap-2">
                                 <span class="w-28 flex-shrink-0 text-xs text-slate-400">{{ $k }}</span>
@@ -128,8 +168,7 @@
                     <h4 class="mb-3 text-xs font-semibold tracking-wider text-slate-700 uppercase">Employment</h4>
                     <div class="space-y-2">
                         @foreach ([
-                            ['Role', $staff->role_label->label()],
-                            ['Subject', $staff->subject_specialty ?? '—'],
+                            ['Role', $staff->roleDisplayName()],
                             ['Qualification', $staff->qualification ?? '—'],
                             ['Date Joined', $staff->date_joined?->format('d M Y') ?? '—'],
                             ['Status', $staff->status->label()],
@@ -195,7 +234,7 @@
 </div>
 
 @if ($canEdit)
-<div id="edit-staff-modal" class="hidden" data-dugsi-width="32rem">
+<div id="edit-staff-modal" class="hidden" data-dugsi-width="40rem">
     <form method="POST" action="{{ route('staff.update', $staff) }}" class="p-5">
         @csrf
         @method('PUT')
@@ -208,29 +247,44 @@
                         class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
                     @error('full_name')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                 </div>
-                <div>
+                <div class="col-span-2">
                     <label class="mb-1 block text-xs font-medium text-slate-700">Role <span class="text-red-500">*</span></label>
-                    <select name="role_label" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required>
-                        @foreach ($roleLabels as $rl)
-                            <option value="{{ $rl->value }}" @selected(old('role_label', $staff->role_label->value) === $rl->value)>{{ $rl->label() }}</option>
+                    <select name="role_label" id="edit-staff-role" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required>
+                        @foreach ($roles as $role)
+                            <option value="{{ $role->key }}" @selected(old('role_label', $staff->roleKey()) === $role->key)>{{ $role->name }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label class="mb-1 block text-xs font-medium text-slate-700">Subject</label>
-                    <select name="subject_specialty" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                        <option value="">—</option>
-                        @foreach ($subjects as $sub)
-                            <option value="{{ $sub }}" @selected(old('subject_specialty', $staff->subject_specialty) === $sub)>{{ $sub }}</option>
-                        @endforeach
-                    </select>
-                    @error('subject_specialty')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                <div id="edit-staff-teacher-fields" @class(['col-span-2 space-y-3' => true, 'hidden' => old('role_label', $staff->roleKey()) === 'finance'])>
+                    @include('staff.partials.subject-fields', [
+                        'wrapId' => 'edit-staff-subject-wrap',
+                        'colSpan' => '',
+                        'selectedSubjects' => old('subjects', $staff->subjectNames()),
+                        'currentRole' => old('role_label', $staff->roleKey()),
+                        'hideForFinance' => false,
+                    ])
+                    @include('staff.partials.work-day-fields', [
+                        'wrapId' => 'edit-staff-workdays-wrap',
+                        'colSpan' => '',
+                        'selectedSchedule' => old('work_schedule', is_array($staff->work_days) && $staff->work_days !== []
+                            ? \App\Models\Staff::normalizeWorkSchedule($staff->work_days)
+                            : \App\Models\Staff::defaultWorkSchedule()),
+                        'weekDays' => $weekDays,
+                        'currentRole' => old('role_label', $staff->roleKey()),
+                        'hideForFinance' => false,
+                    ])
+                    @include('staff.partials.class-fields', [
+                        'wrapId' => 'edit-staff-classes-wrap',
+                        'colSpan' => '',
+                        'selectedClassIds' => old('class_ids', $staff->assignedClasses->pluck('id')->all()),
+                        'classes' => $classes,
+                        'currentRole' => old('role_label', $staff->roleKey()),
+                        'hideForFinance' => false,
+                    ])
                 </div>
-                <div>
-                    <label class="mb-1 block text-xs font-medium text-slate-700">Phone</label>
-                    <input name="phone" value="{{ old('phone', $staff->phone) }}"
-                        class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                </div>
+                @include('staff.partials.phone-fields', [
+                    'phoneValues' => old('phones', $staff->phoneList() ?: ['']),
+                ])
                 <div>
                     <label class="mb-1 block text-xs font-medium text-slate-700">Gender</label>
                     <select name="gender" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
@@ -297,5 +351,24 @@
 @if ($errors->any() || request()->boolean('edit'))
     <script>document.addEventListener('DOMContentLoaded', () => window.DugsiUI?.openModal('#edit-staff-modal'));</script>
 @endif
+<script>
+(() => {
+    const roleSelect = document.getElementById('edit-staff-role');
+    const teacherFields = document.getElementById('edit-staff-teacher-fields');
+
+    const syncTeacherFields = () => {
+        const isFinance = roleSelect?.value === 'finance';
+        teacherFields?.classList.toggle('hidden', isFinance);
+        if (isFinance) {
+            teacherFields?.querySelectorAll('input[type="checkbox"]').forEach((el) => { el.checked = false; });
+        } else if (teacherFields && !teacherFields.querySelector('input[data-schedule-shift]:checked')) {
+            teacherFields.querySelectorAll('input[data-schedule-shift]').forEach((el) => { el.checked = true; });
+        }
+    };
+
+    roleSelect?.addEventListener('change', syncTeacherFields);
+    syncTeacherFields();
+})();
+</script>
 @endif
 @endsection

@@ -26,23 +26,35 @@ enum DocumentType: string
      */
     public static function options(): array
     {
-        return self::cases();
+        return array_values(array_filter(
+            self::cases(),
+            fn (self $type) => $type !== self::FeeReceipt
+        ));
     }
 
     /**
      * Document types the given user may generate / preview / print.
-     * Finance is limited to fee-related operational docs (not academic transcripts).
+     * Finance is limited to operational ID cards (fee receipts are issued from Fee Collection).
+     * Form Masters (class heads) may issue report cards for their classes.
      *
      * @return list<self>
      */
     public static function forUser(\App\Models\User $user): array
     {
         if ($user->isAdmin()) {
-            return self::cases();
+            return self::options();
         }
 
         if ($user->isFinance()) {
-            return [self::FeeReceipt, self::StudentIdCard];
+            return [self::StudentIdCard];
+        }
+
+        if ($user->canGenerateAnyGradeReport() && (
+            $user->hasPermission('documents.issue')
+            || $user->hasPermission('documents.view')
+            || $user->hasPermission('grades.enter')
+        )) {
+            return [self::ReportCard];
         }
 
         return [];

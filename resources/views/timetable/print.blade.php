@@ -13,9 +13,12 @@
     </style>
 </head>
 <body class="bg-slate-50 p-6 text-slate-900">
-    <div class="no-print mb-4 flex justify-end gap-2">
-        <button onclick="window.print()" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white">Print / Save PDF</button>
-        <button onclick="window.close()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">Close</button>
+    <div class="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
+        <a href="{{ route('modules.home') }}" class="text-sm text-slate-500 hover:text-slate-800">← Apps</a>
+        <div class="flex gap-2">
+            <button onclick="window.print()" class="rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white">Print / Save PDF</button>
+            <button onclick="window.close()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">Close</button>
+        </div>
     </div>
 
     <div class="mx-auto max-w-5xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

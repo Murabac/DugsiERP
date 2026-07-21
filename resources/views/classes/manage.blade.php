@@ -39,7 +39,7 @@
         <table class="w-full min-w-[720px] text-sm">
             <thead>
                 <tr class="border-b border-slate-200 bg-slate-50">
-                    @foreach (['Class', 'Form', 'Section', 'Year', 'Headmaster', 'Enrolled', 'Waitlist', 'Capacity', 'Fill Rate', 'Status', 'Actions'] as $h)
+                    @foreach (['Class', 'Form', 'Section', 'Year', 'Form Master', 'Enrolled', 'Waitlist', 'Capacity', 'Fill Rate', 'Status', 'Actions'] as $h)
                         <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{{ $h }}</th>
                     @endforeach
                 </tr>
@@ -150,7 +150,7 @@
                     @error('room')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label class="mb-1 block text-xs font-medium text-slate-700">Class Headmaster</label>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Form Master</label>
                     <select name="homeroom_teacher_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
                         <option value="">— None —</option>
                         @foreach ($teachers as $teacher)
@@ -159,7 +159,7 @@
                             </option>
                         @endforeach
                     </select>
-                    <p class="mt-1 text-[11px] text-slate-400">Only the headmaster (or Admin) can generate student grade reports for this class.</p>
+                    <p class="mt-1 text-[11px] text-slate-400">The Form Master is the teacher who heads this class (reports &amp; class management). Admins can always do the same.</p>
                     @error('homeroom_teacher_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>
@@ -241,7 +241,7 @@
                                     @error('sections.'.$i.'.room')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                                 <div>
-                                    <label class="mb-1 block text-[11px] font-medium text-slate-600">Headmaster</label>
+                                    <label class="mb-1 block text-[11px] font-medium text-slate-600">Form Master</label>
                                     <select name="sections[{{ $i }}][homeroom_teacher_id]" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
                                         <option value="">— Optional —</option>
                                         @foreach ($teachers as $teacher)
@@ -292,7 +292,7 @@
                     class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
             </div>
             <div>
-                <label class="mb-1 block text-[11px] font-medium text-slate-600">Headmaster</label>
+                <label class="mb-1 block text-[11px] font-medium text-slate-600">Form Master</label>
                 <select name="sections[__INDEX__][homeroom_teacher_id]" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
                     <option value="">— Optional —</option>
                     @foreach ($teachers as $teacher)

@@ -11,6 +11,7 @@
 
     <x-section-header title="Fee Collection Report" :sub="'Collected vs outstanding by month · AY '.$academicYear">
         <x-slot:action>
+            <x-btn variant="secondary" :href="route('reports.fees.print', request()->query())" target="_blank">Print</x-btn>
             <x-btn variant="secondary" href="{{ route('reports.fees', array_filter(['from' => $from, 'to' => $to, 'class' => $classId, 'export' => 'csv'])) }}">
                 <x-icon name="download" :size="14" /> Export CSV
             </x-btn>

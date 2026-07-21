@@ -135,6 +135,19 @@ class ReportController extends Controller
             ];
         }
 
+        if ($this->wantsPrint($request)) {
+            abort_unless($applied, 404);
+
+            return view('reports.print.attendance', [
+                'academicYear' => $year,
+                'from' => $from,
+                'to' => $to,
+                'schoolClass' => $schoolClass,
+                'rows' => $rows,
+                'stats' => $stats,
+            ]);
+        }
+
         return view('reports.attendance', [
             'academicYear' => $year,
             'classes' => $classes,
@@ -274,6 +287,21 @@ class ReportController extends Controller
             ];
         }
 
+        if ($this->wantsPrint($request)) {
+            abort_unless($applied && $termsError === null && $schoolClass && $selectedTerms !== [], 404);
+
+            return view('reports.print.academic', [
+                'academicYear' => $year,
+                'selectedTerms' => $selectedTerms,
+                'schoolClass' => $schoolClass,
+                'subject' => $subject,
+                'combined' => $combined,
+                'termLabel' => $termLabel,
+                'rows' => $rows,
+                'stats' => $stats,
+            ]);
+        }
+
         return view('reports.academic', [
             'academicYear' => $year,
             'classes' => $classes,
@@ -366,6 +394,19 @@ class ReportController extends Controller
             ],
         ];
 
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.fees', [
+                'academicYear' => $year,
+                'from' => Carbon::parse($from)->toDateString(),
+                'to' => Carbon::parse($to)->toDateString(),
+                'rows' => $rows,
+                'totalDue' => $totalDue,
+                'totalPaid' => $totalPaid,
+                'totalOutstanding' => $totalOutstanding,
+                'rate' => $rate,
+            ]);
+        }
+
         return view('reports.fees', [
             'academicYear' => $year,
             'classes' => $classes,
@@ -424,6 +465,15 @@ class ReportController extends Controller
             } catch (\Throwable) {
                 $stats = null;
             }
+        }
+
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.payroll', [
+                'academicYear' => $year,
+                'month' => $month,
+                'items' => $items,
+                'stats' => $stats,
+            ]);
         }
 
         return view('reports.payroll', [
@@ -490,6 +540,17 @@ class ReportController extends Controller
             ]],
         ];
 
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.enrollment', [
+                'academicYear' => $year,
+                'rows' => $byClass,
+                'totals' => $totals,
+                'formFilter' => $formFilter,
+                'statusFilter' => $statusFilter,
+                'statuses' => StudentStatus::cases(),
+            ]);
+        }
+
         return view('reports.enrollment', [
             'academicYear' => $year,
             'classes' => $classes,
@@ -536,7 +597,12 @@ class ReportController extends Controller
 
     private function authorizeAdminReports(?User $user): void
     {
-        abort_unless($user && $user->isAdmin(), 403);
+        abort_unless($user && $user->hasPermission('reports.academic'), 403);
+    }
+
+    private function wantsPrint(Request $request): bool
+    {
+        return $request->routeIs('*.print') || $request->boolean('print');
     }
 
     /**
@@ -565,7 +631,7 @@ class ReportController extends Controller
                 'icon' => 'calendar',
                 'route' => 'reports.attendance',
                 'tone' => 'border-blue-200 bg-blue-50',
-                'admin_only' => true,
+                'permission' => 'reports.academic',
             ],
             [
                 'key' => 'academic',
@@ -574,7 +640,7 @@ class ReportController extends Controller
                 'icon' => 'graduation-cap',
                 'route' => 'reports.academic',
                 'tone' => 'border-indigo-200 bg-indigo-50',
-                'admin_only' => true,
+                'permission' => 'reports.academic',
             ],
             [
                 'key' => 'fees',
@@ -583,7 +649,7 @@ class ReportController extends Controller
                 'icon' => 'dollar-sign',
                 'route' => 'reports.fees',
                 'tone' => 'border-emerald-200 bg-emerald-50',
-                'admin_only' => false,
+                'permission' => 'reports.finance',
             ],
             [
                 'key' => 'payroll',
@@ -592,7 +658,7 @@ class ReportController extends Controller
                 'icon' => 'users',
                 'route' => 'reports.payroll',
                 'tone' => 'border-amber-200 bg-amber-50',
-                'admin_only' => false,
+                'permission' => 'reports.finance',
             ],
             [
                 'key' => 'enrollment',
@@ -601,14 +667,13 @@ class ReportController extends Controller
                 'icon' => 'bar-chart',
                 'route' => 'reports.enrollment',
                 'tone' => 'border-slate-200 bg-slate-50',
-                'admin_only' => true,
+                'permission' => 'reports.academic',
             ],
         ];
 
-        if ($user->isAdmin()) {
-            return $all;
-        }
-
-        return array_values(array_filter($all, fn ($c) => ! $c['admin_only']));
+        return array_values(array_filter(
+            $all,
+            fn (array $card) => $user->hasPermission($card['permission'])
+        ));
     }
 }

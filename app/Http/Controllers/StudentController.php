@@ -79,8 +79,9 @@ class StudentController extends Controller
 
                 $matched = Guardian::query()
                     ->where(function ($query) use ($like) {
-                        $query->whereRaw("full_name LIKE ? ESCAPE '\\'", [$like])
-                            ->orWhereRaw("phone LIKE ? ESCAPE '\\'", [$like]);
+                        // Bind ESCAPE char — inline ESCAPE '\' breaks PDO emulated prepares on MariaDB.
+                        $query->whereRaw('full_name LIKE ? ESCAPE ?', [$like, '\\'])
+                            ->orWhereRaw('phone LIKE ? ESCAPE ?', [$like, '\\']);
                     })
                     ->get();
 
@@ -197,7 +198,7 @@ class StudentController extends Controller
                 'required',
                 Rule::enum(StudentStatus::class)->except([StudentStatus::Waitlisted]),
             ],
-            'need_based_discount' => ['sometimes', 'boolean'],
+            'need_based_discount_amount' => ['nullable', 'numeric', 'min:0', 'max:99999.99'],
             'guardian_name' => ['required', 'string', 'max:255'],
             'guardian_phone' => ['required', 'string', 'max:32'],
             'relationship' => ['required', Rule::enum(GuardianRelationship::class)],
@@ -228,7 +229,7 @@ class StudentController extends Controller
                 'address' => $data['address'] ?? null,
                 'previous_school' => $data['previous_school'] ?? null,
                 'status' => $onWaitlist ? StudentStatus::Waitlisted : $data['status'],
-                'need_based_discount' => (bool) ($data['need_based_discount'] ?? false),
+                'need_based_discount_amount' => round((float) ($data['need_based_discount_amount'] ?? 0), 2),
             ]);
 
             Guardian::query()->create([
@@ -350,7 +351,7 @@ class StudentController extends Controller
                     ? Rule::in([StudentStatus::Waitlisted->value])
                     : Rule::enum(StudentStatus::class)->except([StudentStatus::Waitlisted]),
             ],
-            'need_based_discount' => ['sometimes', 'boolean'],
+            'need_based_discount_amount' => ['nullable', 'numeric', 'min:0', 'max:99999.99'],
         ]);
 
         DB::transaction(function () use ($student, $data, $request, $academicYear) {
@@ -369,7 +370,7 @@ class StudentController extends Controller
                 'address' => $data['address'] ?? null,
                 'previous_school' => $data['previous_school'] ?? null,
                 'status' => $data['status'],
-                'need_based_discount' => $request->boolean('need_based_discount'),
+                'need_based_discount_amount' => round((float) ($data['need_based_discount_amount'] ?? 0), 2),
             ]);
 
             if ($request->hasFile('photo') && $previousPhoto && $previousPhoto !== $photoPath) {
@@ -648,18 +649,19 @@ class StudentController extends Controller
         abort_unless($request->user()->isAdmin(), 403);
 
         $data = $request->validate([
-            'need_based_discount' => ['sometimes', 'boolean'],
+            'need_based_discount_amount' => ['required', 'numeric', 'min:0', 'max:99999.99'],
         ]);
 
         $student->update([
-            'need_based_discount' => $request->boolean('need_based_discount'),
+            'need_based_discount_amount' => round((float) $data['need_based_discount_amount'], 2),
         ]);
 
         $revised = \App\Support\MonthlyInvoiceGenerator::recalculateUnpaid($student->fresh());
 
-        $message = $student->need_based_discount
-            ? 'Need-based fee discount enabled for '.$student->full_name.'.'
-            : 'Need-based fee discount removed for '.$student->full_name.'.';
+        $amount = (float) $student->need_based_discount_amount;
+        $message = $amount > 0
+            ? 'Need-based fee discount set to '.\App\Support\Money::format($amount).' for '.$student->full_name.'.'
+            : 'Need-based fee discount cleared for '.$student->full_name.'.';
         if ($revised > 0) {
             $message .= ' Updated '.$revised.' unpaid invoice'.($revised === 1 ? '' : 's').'.';
         }

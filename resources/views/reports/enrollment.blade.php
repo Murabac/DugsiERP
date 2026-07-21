@@ -9,7 +9,11 @@
         ['label' => 'Enrollment Report'],
     ]" />
 
-    <x-section-header title="Enrollment Report" :sub="'Student counts by class and status · AY '.$academicYear" />
+    <x-section-header title="Enrollment Report" :sub="'Student counts by class and status · AY '.$academicYear">
+        <x-slot:action>
+            <x-btn variant="secondary" :href="route('reports.enrollment.print', request()->query())" target="_blank">Print</x-btn>
+        </x-slot:action>
+    </x-section-header>
 
     <form method="GET" action="{{ route('reports.enrollment') }}" class="rounded-lg border border-slate-200 bg-white p-4">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">

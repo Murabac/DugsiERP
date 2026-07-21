@@ -8,9 +8,16 @@
 @endphp
 
 <div class="space-y-4">
+    @php
+        $periodsPerDay = $periodsPerDay ?? \App\Support\SchoolWeek::periodsPerDay();
+        $weeklyCapacity = $weeklyCapacity ?? \App\Support\SchoolWeek::weeklyCapacity();
+        $dayStructureLabel = collect($periodsPerDay)
+            ->map(fn ($n, $d) => \App\Support\SchoolWeek::dayLabel($d).' '.$n)
+            ->implode(' · ');
+    @endphp
     <x-section-header
         title="Timetable"
-        :sub="'Week: Saturday – Wednesday · '.$academicYear.' · '.count($periods).' periods/day'.($mode === 'admin' ? ' · Drag cells to rearrange' : '')"
+        :sub="'Week: Saturday – Wednesday · '.$academicYear.' · '.$weeklyCapacity.' periods/week'.($mode === 'admin' ? ' · Drag cells to rearrange' : '')"
     >
         <x-slot:action>
             @if ($mode === 'admin')
@@ -23,14 +30,19 @@
                         @endforelse
                     </select>
                 </form>
+                <x-btn variant="secondary" href="{{ route('timetable.requirements') }}">Requirements</x-btn>
                 @if ($schoolClass)
                     <x-btn variant="secondary" type="button" data-dugsi-open="#generate-modal" data-dugsi-width="32rem">Generate</x-btn>
-                    <x-btn href="{{ route('timetable.print', ['class' => $schoolClass->id]) }}" target="_blank" rel="noopener">
-                        <x-icon name="printer" :size="14" /> Print / PDF
+                    <x-btn href="{{ route('timetable.print', ['scope' => 'school']) }}" target="_blank" rel="noopener">
+                        <x-icon name="printer" :size="14" /> Print all
+                    </x-btn>
+                    <x-btn variant="secondary" href="{{ route('timetable.print', ['class' => $schoolClass->id]) }}" target="_blank" rel="noopener">
+                        Print class
                     </x-btn>
                 @endif
             @else
                 <span class="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">Read-only</span>
+                <x-btn variant="secondary" href="{{ route('timetable.requirements') }}">Requirements</x-btn>
                 <x-btn href="{{ route('timetable.print') }}" target="_blank" rel="noopener">
                     <x-icon name="printer" :size="14" /> Print / PDF
                 </x-btn>
@@ -52,6 +64,21 @@
             Showing: <strong>My schedule</strong> ({{ $staff->full_name }}) — Academic Year {{ $academicYear }}. Only admins can create or change the timetable.
         @endif
     </div>
+
+    @if ($mode === 'admin' && ! empty($moveHints))
+        <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <div class="text-[11px] font-semibold tracking-wider text-amber-800 uppercase">Suggested moves</div>
+            <ul class="mt-2 space-y-1.5 text-sm text-amber-950">
+                @foreach ($moveHints as $hint)
+                    <li class="flex gap-2">
+                        <span class="mt-0.5 shrink-0 font-semibold text-amber-700">{{ $hint['empty_label'] }}</span>
+                        <span>{{ $hint['text'] }}</span>
+                    </li>
+                @endforeach
+            </ul>
+            <p class="mt-2 text-[11px] text-amber-800/80">These steps place a missing subject — not just move the empty hole around.</p>
+        </div>
+    @endif
 
     @if ($mode === 'admin' && ! $schoolClass)
         <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
@@ -76,14 +103,19 @@
                                 <div class="font-mono text-[11px] text-slate-400">{{ $period['label'] }}</div>
                             </td>
                             @foreach ($days as $day)
-                                @php $slot = $grid[$period['period']][$day] ?? null; @endphp
-                                <td class="tt-drop-cell px-2 py-2 align-top"
-                                    @if ($canEdit)
+                                @php
+                                    $slot = $grid[$period['period']][$day] ?? null;
+                                    $dayActive = \App\Support\SchoolWeek::dayHasPeriod($day, $period['period']);
+                                @endphp
+                                <td class="tt-drop-cell px-2 py-2 align-top {{ $dayActive ? '' : 'bg-slate-50/80' }}"
+                                    @if ($canEdit && $dayActive)
                                         data-drop-cell
                                         data-day="{{ $day }}"
                                         data-period="{{ $period['period'] }}"
                                     @endif>
-                                    @if ($slot)
+                                    @if (! $dayActive)
+                                        <div class="flex min-h-[56px] items-center justify-center rounded-md text-[10px] font-medium text-slate-300">—</div>
+                                    @elseif ($slot)
                                         @php
                                             $color = $subjectColors[$slot->subject?->name] ?? 'bg-slate-50 border-slate-200 text-slate-900';
                                         @endphp
@@ -129,7 +161,14 @@
                                             @endif
                                         </div>
                                     @elseif ($canEdit)
-                                        <div data-empty-drop class="tt-empty flex min-h-[56px] w-full flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-100 text-xs text-slate-300">
+                                        @php
+                                            $cellHint = collect($moveHints ?? [])->first(
+                                                fn ($h) => $h['empty_day'] === $day && (int) $h['empty_period'] === (int) $period['period']
+                                            );
+                                        @endphp
+                                        <div data-empty-drop
+                                            class="tt-empty flex min-h-[56px] w-full flex-col items-center justify-center rounded-md border-2 border-dashed {{ $cellHint ? 'border-amber-300 bg-amber-50/40' : 'border-slate-100' }} text-xs {{ $cellHint ? 'text-amber-800' : 'text-slate-300' }}"
+                                            @if ($cellHint) title="{{ $cellHint['text'] }}" @endif>
                                             <button type="button"
                                                 data-slot-edit
                                                 data-day="{{ $day }}"
@@ -137,6 +176,11 @@
                                                 data-subject-id=""
                                                 data-teacher-id=""
                                                 class="tt-add-btn w-full py-3 hover:text-dugsi-primary">+ Add</button>
+                                            @if ($cellHint)
+                                                <span class="pointer-events-none px-1 pb-1.5 text-center text-[9px] font-medium leading-snug text-amber-800/90">
+                                                    Hint
+                                                </span>
+                                            @endif
                                             <span data-drop-label class="pointer-events-none hidden pb-2 text-[10px] font-semibold uppercase tracking-wide">Drop here</span>
                                         </div>
                                     @else
@@ -200,24 +244,47 @@
 
 <div id="generate-modal" class="hidden" data-dugsi-width="32rem">
     <form method="POST" action="{{ route('timetable.generate') }}" id="generate-form"
-        data-dugsi-confirm="Replace the current timetable for this class?"
-        data-dugsi-confirm-title="Generate timetable"
+        data-dugsi-confirm="This replaces ALL existing timetables for {{ $classes->count() }} active class(es). Classes are filled in form order — later classes may get more empty periods if teachers are scarce. Continue?"
+        data-dugsi-confirm-title="Generate all timetables"
         data-dugsi-confirm-ok="Generate">
         @csrf
         <input type="hidden" name="class_id" value="{{ $schoolClass->id }}">
         <div class="flex items-start justify-between gap-3 border-b border-slate-200 p-4 sm:p-5">
             <div>
                 <h3 class="font-semibold text-slate-900">Generate Timetable</h3>
-                <p class="mt-0.5 text-xs text-slate-500">Set periods per subject per week · {{ $schoolClass->displayName() }}</p>
+                <p class="mt-0.5 text-xs text-slate-500">One plan for all {{ $classes->count() }} class(es) · respects teacher days &amp; shifts · earlier classes fill first</p>
             </div>
             <button type="button" data-dugsi-close class="text-slate-400 hover:text-slate-700" aria-label="Close">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
         <div class="max-h-[60vh] space-y-3 overflow-y-auto p-4 sm:p-5">
-            <div id="generate-capacity-banner" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                Total periods available: <strong>{{ $weeklyCapacity }}</strong> ({{ $periodCount }} periods × 5 days). Currently set: <strong id="generate-total">0</strong>
+            <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">From Settings · periods per day</div>
+                    @if (auth()->user()?->hasPermission('settings.manage'))
+                        <a href="{{ route('settings.index', ['tab' => 'academic']) }}" class="text-[11px] font-medium text-dugsi-primary hover:underline">Edit day structure</a>
+                    @endif
+                </div>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                    @foreach ($periodsPerDay as $dayKey => $dayCount)
+                        <span class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700">
+                            <span class="font-medium">{{ \App\Support\SchoolWeek::dayLabel($dayKey) }}</span>
+                            <span class="font-bold text-dugsi-primary">{{ $dayCount }}</span>
+                        </span>
+                    @endforeach
+                </div>
+                <p class="mt-2 text-xs text-slate-600">
+                    Weekly capacity: <strong>{{ $weeklyCapacity }}</strong> periods per class
+                </p>
             </div>
+
+            <div id="generate-capacity-banner" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                Subject plan total: <strong id="generate-total">0</strong> / {{ $weeklyCapacity }}
+                <span class="text-amber-800/80">· must not exceed weekly capacity</span>
+            </div>
+
+            <div class="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Periods per subject (per class / week)</div>
             @foreach ($subjects as $subject)
                 @php $default = $defaultWeeklyPeriods[$subject->name] ?? 0; @endphp
                 <div class="flex items-center justify-between gap-3">
@@ -236,12 +303,12 @@
             @endforeach
         </div>
         <div class="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <button type="button" id="generate-reset" class="text-left text-xs text-slate-500 underline hover:text-slate-800">Reset to defaults</button>
+            <button type="button" id="generate-reset" class="text-left text-xs text-slate-500 underline hover:text-slate-800">Reset to school plan</button>
             <div class="flex gap-2">
                 <button type="button" data-dugsi-close
                     class="flex-1 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 sm:flex-none">Cancel</button>
                 <button type="submit" id="generate-submit"
-                    class="flex-1 rounded-lg bg-dugsi-primary px-4 py-2 text-sm font-medium text-white hover:bg-[#162d56] sm:flex-none">Generate</button>
+                    class="flex-1 rounded-lg bg-dugsi-primary px-4 py-2 text-sm font-medium text-white hover:bg-[#162d56] sm:flex-none">Generate all</button>
             </div>
         </div>
     </form>
@@ -318,9 +385,13 @@ function updateGenerateTotal() {
     const submit = document.getElementById('generate-submit');
     if (totalEl) totalEl.textContent = String(total);
     if (banner) {
-        banner.className = total > weeklyCapacity
-            ? 'rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700'
-            : 'rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700';
+        if (total > weeklyCapacity) {
+            banner.className = 'rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700';
+        } else if (total === weeklyCapacity) {
+            banner.className = 'rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800';
+        } else {
+            banner.className = 'rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700';
+        }
     }
     if (submit) submit.disabled = total < 1 || total > weeklyCapacity;
 }

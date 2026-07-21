@@ -69,14 +69,11 @@
                 </div>
                 <div data-doc-field="term" class="hidden">
                     <x-select label="Term" name="term">
+                        <option value="all" @selected(old('term', 'Term 2') === 'all')>All Terms</option>
                         @foreach ($terms as $term)
                             <option value="{{ $term->value }}" @selected(old('term', 'Term 2') === $term->value)>{{ $term->label() }}</option>
                         @endforeach
                     </x-select>
-                </div>
-                <div data-doc-field="payment" class="hidden">
-                    <x-field label="Payment ID (optional)" name="payment_id" type="number" :value="old('payment_id')" />
-                    <p class="mt-1 text-[11px] text-slate-400">Leave blank to use the latest payment.</p>
                 </div>
                 <div data-doc-field="transfer" class="hidden space-y-3">
                     <x-field label="Reason for leaving" name="reason" :value="old('reason')" />
@@ -155,7 +152,6 @@
                         const key = el.getAttribute('data-doc-field');
                         let show = false;
                         if (key === 'term') show = t === 'report_card';
-                        if (key === 'payment') show = t === 'fee_receipt';
                         if (key === 'transfer') show = t === 'transfer_certificate';
                         el.classList.toggle('hidden', !show);
                     });
@@ -174,8 +170,6 @@
                     if (studentEl.value) params.set('student_id', studentEl.value);
                     const term = form.querySelector('[name="term"]')?.value;
                     if (term) params.set('term', term);
-                    const paymentId = form.querySelector('[name="payment_id"]')?.value;
-                    if (paymentId) params.set('payment_id', paymentId);
                     ['reason', 'date_of_leaving', 'conduct', 'academic_progress'].forEach((name) => {
                         const el = form.querySelector(`[name="${name}"]`);
                         if (el && el.value) params.set(name, el.value);
@@ -244,24 +238,6 @@
                         </div>`;
                         return;
                     }
-                    if (d.type === 'fee_receipt') {
-                        preview.innerHTML = `<div class="mx-auto max-w-xs rounded-lg border border-slate-200 bg-white p-5 text-sm">
-                            <div class="mb-3 border-b border-slate-200 pb-3 text-center">
-                                <div class="font-bold text-[#1e3a6e]">${schoolName}</div>
-                                <span class="mt-2 inline-block rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">OFFICIAL RECEIPT</span>
-                                <div class="mt-1 font-mono text-[11px] text-slate-400">${esc(d.receipt_number)}</div>
-                            </div>
-                            <div class="space-y-1.5 text-xs">
-                                <div class="flex justify-between"><span class="text-slate-500">Student</span><span class="font-medium">${name}</span></div>
-                                <div class="flex justify-between"><span class="text-slate-500">ID</span><span class="font-mono">${code}</span></div>
-                                <div class="flex justify-between"><span class="text-slate-500">Class</span><span>${className}</span></div>
-                                <div class="flex justify-between"><span class="text-slate-500">Method</span><span>${esc(d.method)}</span></div>
-                                <div class="flex justify-between"><span class="text-slate-500">Paid</span><span>${esc(d.paid_at)}</span></div>
-                            </div>
-                            <div class="mt-4 text-center text-2xl font-bold text-green-700">${esc(d.amount)}</div>
-                        </div>`;
-                        return;
-                    }
                     if (d.type === 'student_id_card') {
                         preview.innerHTML = `<div class="mx-auto w-72 overflow-hidden rounded-xl bg-white shadow-lg">
                             <div class="bg-gradient-to-r from-[#0f2744] to-[#1e3a6e] px-4 py-3 text-white"><div class="text-sm font-bold">${schoolName}</div><div class="text-[10px] opacity-80">${schoolSub}</div></div>
@@ -281,21 +257,46 @@
                     }
 
                     const rows = (d.rows || []).map((row) => {
-                        const score = row.score != null ? `${Number(row.score).toFixed(1)}%` : '—';
+                        if (d.all_terms) {
+                            const termCells = (d.terms || []).map((label) => {
+                                const score = row.term_scores ? row.term_scores[label] : null;
+                                return `<td class="px-2 py-1 text-center">${score != null ? Number(score).toFixed(1) : '—'}</td>`;
+                            }).join('');
+                            const total = row.average != null ? Number(row.average).toFixed(1) : '—';
+                            const pct = row.average != null ? `${Number(row.average).toFixed(1)}%` : '—';
+                            const letter = row.letter || '—';
+                            return `<tr class="border-b border-slate-100">
+                                <td class="px-2 py-1">${esc(row.subject)}</td>
+                                ${termCells}
+                                <td class="px-2 py-1 text-center">${esc(total)}</td>
+                                <td class="px-2 py-1 text-center">${esc(pct)}</td>
+                                <td class="px-2 py-1 text-center font-bold">${esc(letter)}</td>
+                            </tr>`;
+                        }
+                        const marks = row.marks != null ? Number(row.marks).toFixed(1) : '—';
+                        const percent = row.percent != null ? `${Number(row.percent).toFixed(1)}%` : '—';
                         const letter = row.letter || '—';
                         return `<tr class="border-b border-slate-100">
                             <td class="px-2 py-1">${esc(row.subject)}</td>
-                            <td class="px-2 py-1 text-center">${esc(score)}</td>
+                            <td class="px-2 py-1 text-center">${esc(marks)}</td>
+                            <td class="px-2 py-1 text-center">${esc(percent)}</td>
                             <td class="px-2 py-1 text-center font-bold">${esc(letter)}</td>
                             <td class="px-2 py-1 text-slate-500">${esc(row.remarks || '—')}</td>
                         </tr>`;
                     }).join('');
                     const avg = d.average != null
-                        ? `${Number(d.average).toFixed(1)}%${d.average_letter ? ' (' + esc(d.average_letter) + ')' : ''}`
+                        ? (d.all_terms
+                            ? `${Number(d.average).toFixed(1)}/100 (${Number(d.average).toFixed(1)}%)${d.average_letter ? ' (' + esc(d.average_letter) + ')' : ''}`
+                            : `${d.average_marks != null ? Number(d.average_marks).toFixed(1) : '—'} (${Number(d.average).toFixed(1)}%)${d.average_letter ? ' (' + esc(d.average_letter) + ')' : ''}`)
                         : '—';
                     const rank = d.rank != null ? `${d.rank} of ${d.class_size}` : '—';
                     const attendance = d.attendance_rate != null ? `${d.attendance_rate}%` : '—';
                     const roll = d.roll ? ` · Roll ${esc(d.roll)}` : '';
+                    const headCols = d.all_terms
+                        ? `<th class="px-2 py-1.5 text-left">Subject</th>${(d.terms || []).map((t) => `<th class="px-2 py-1.5 text-center">${esc(t)}</th>`).join('')}<th class="px-2 py-1.5 text-center">Total</th><th class="px-2 py-1.5 text-center">%</th><th class="px-2 py-1.5 text-center">Grade</th>`
+                        : `<th class="px-2 py-1.5 text-left">Subject</th><th class="px-2 py-1.5 text-center">Score</th><th class="px-2 py-1.5 text-center">%</th><th class="px-2 py-1.5 text-center">Grade</th><th class="px-2 py-1.5 text-left">Remarks</th>`;
+                    const emptyColspan = d.all_terms ? (3 + (d.terms || []).length) : 5;
+                    const avgLabel = d.all_terms ? 'Overall average' : 'Term average';
 
                     preview.innerHTML = `<div class="rounded-lg border border-slate-200 bg-white p-6">
                         <div class="mb-4 flex items-start justify-between border-b border-slate-200 pb-4">
@@ -309,10 +310,10 @@
                             <div><span class="text-slate-400">Guardian</span> <span class="font-medium">${esc(d.guardian || '—')}</span></div>
                             <div><span class="text-slate-400">Attendance</span> <span class="font-medium">${esc(attendance)}</span></div>
                         </div>
-                        <table class="w-full text-xs"><thead><tr class="bg-[#1e3a6e] text-white"><th class="px-2 py-1.5 text-left">Subject</th><th class="px-2 py-1.5 text-center">Score</th><th class="px-2 py-1.5 text-center">Grade</th><th class="px-2 py-1.5 text-left">Remarks</th></tr></thead>
-                        <tbody>${rows || '<tr><td colspan="4" class="px-2 py-6 text-center text-slate-400">No subjects / scores yet</td></tr>'}</tbody></table>
+                        <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="bg-[#1e3a6e] text-white">${headCols}</tr></thead>
+                        <tbody>${rows || `<tr><td colspan="${emptyColspan}" class="px-2 py-6 text-center text-slate-400">No subjects / scores yet</td></tr>`}</tbody></table></div>
                         <div class="mt-4 flex justify-between border-t border-slate-200 pt-3 text-xs">
-                            <div><span class="text-slate-400">Term average</span> <span class="font-semibold text-slate-800">${avg}</span></div>
+                            <div><span class="text-slate-400">${avgLabel}</span> <span class="font-semibold text-slate-800">${avg}</span></div>
                             <div><span class="text-slate-400">Class rank</span> <span class="font-semibold text-slate-800">${esc(rank)}</span></div>
                         </div>
                     </div>`;
@@ -322,7 +323,6 @@
                 classEl.addEventListener('change', syncStudents);
                 studentEl.addEventListener('change', renderPreview);
                 form.querySelector('[name="term"]')?.addEventListener('change', renderPreview);
-                form.querySelector('[name="payment_id"]')?.addEventListener('input', renderPreview);
                 ['reason', 'date_of_leaving', 'conduct', 'academic_progress'].forEach((name) => {
                     form.querySelector(`[name="${name}"]`)?.addEventListener('input', renderPreview);
                 });

@@ -149,7 +149,12 @@ class DocumentIssuer
             ]);
         }
 
-        $term = AcademicTerm::from($termRaw);
+        if ($termRaw !== GradeReport::ALL_TERMS && AcademicTerm::tryFrom($termRaw) === null) {
+            throw ValidationException::withMessages([
+                'term' => 'Select a valid term for the report card.',
+            ]);
+        }
+
         $schoolClass = SchoolClass::query()->findOrFail($classId);
         if (! self::activeEnrollment($student, $schoolClass, $year)) {
             throw ValidationException::withMessages([
@@ -157,7 +162,7 @@ class DocumentIssuer
             ]);
         }
 
-        return [$schoolClass->id, $term->value, null, ['academic_year' => $year]];
+        return [$schoolClass->id, $termRaw, null, ['academic_year' => $year]];
     }
 
     /**

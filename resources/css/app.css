@@ -45,6 +45,8 @@
 
 .dugsi-swal-form {
     padding: 0 !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
 }
 
 .dugsi-swal-form .dugsi-swal-title {
@@ -60,7 +62,7 @@
     margin: 0 !important;
     padding: 0 !important;
     text-align: left;
-    overflow: visible;
+    overflow: visible !important;
 }
 
 .dugsi-swal-form .dugsi-swal-close {
@@ -185,6 +187,12 @@ html.swal2-shown:not(.swal2-toast-shown) {
     }
 
     .att-btn.is-active[data-status='suspended'] {
+        border-color: #475569;
+        background-color: #475569;
+        color: #fff;
+    }
+
+    .att-btn.is-active[data-status='on_leave'] {
         border-color: #475569;
         background-color: #475569;
         color: #fff;

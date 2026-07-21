@@ -17,6 +17,7 @@ use App\Support\AcademicYear;
 use App\Support\GradeEditRules;
 use App\Support\GradeReport;
 use App\Support\GradeScale;
+use App\Support\TermMarks;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -46,7 +47,9 @@ class GradeController extends Controller
 
         $rows = collect();
         $classAverage = null;
+        $classAverageMarks = null;
         $classAverageLetter = null;
+        $termMax = TermMarks::maxFor($term);
 
         if ($schoolClass && $subject) {
             $enrollments = $schoolClass->activeEnrollments()
@@ -63,15 +66,24 @@ class GradeController extends Controller
                 ->get()
                 ->keyBy('student_id');
 
-            $rows = $enrollments->map(function (Enrollment $enrollment) use ($existing, $user) {
+            $rows = $enrollments->map(function (Enrollment $enrollment) use ($existing, $user, $term, $termMax) {
                 $student = $enrollment->student;
                 $grade = $existing->get($student->id);
                 $scoreOld = old('scores.'.$student->id);
-                $score = $scoreOld !== null
-                    ? $scoreOld
-                    : ($grade?->score_percent !== null ? (string) $grade->score_percent : '');
+                if ($scoreOld !== null) {
+                    $score = $scoreOld;
+                } elseif ($grade?->score_marks !== null) {
+                    $score = (string) $grade->score_marks;
+                } elseif ($grade?->score_percent !== null) {
+                    $score = (string) TermMarks::marksFromPercent((float) $grade->score_percent, $term);
+                } else {
+                    $score = '';
+                }
 
-                $letter = is_numeric($score) ? GradeScale::letterFor((float) $score) : null;
+                $percent = is_numeric($score)
+                    ? TermMarks::percentFromMarks((float) $score, $term)
+                    : null;
+                $letter = $percent !== null ? GradeScale::letterFor($percent) : null;
                 $locked = GradeEditRules::isLockedFor($user, $grade);
                 $needsNote = GradeEditRules::requiresEditNote($user, $grade);
                 $unlockUntil = $grade ? GradeEditRules::unlockUntil($grade) : null;
@@ -81,6 +93,7 @@ class GradeController extends Controller
                     'student' => $student,
                     'roll' => str_pad((string) $enrollment->roll_number, 2, '0', STR_PAD_LEFT),
                     'score' => $score,
+                    'percent' => $percent,
                     'letter' => $letter,
                     'remarks' => old('remarks.'.$student->id, $grade?->remarks ?? ''),
                     'edit_note' => old('edit_notes.'.$student->id, ''),
@@ -99,7 +112,8 @@ class GradeController extends Controller
                 ->map(fn ($s) => (float) $s);
 
             if ($numericScores->isNotEmpty()) {
-                $classAverage = round($numericScores->avg(), 1);
+                $classAverageMarks = round($numericScores->avg(), 1);
+                $classAverage = round(TermMarks::percentFromMarks($classAverageMarks, $term), 1);
                 $classAverageLetter = GradeScale::letterFor($classAverage);
             }
         }
@@ -111,8 +125,10 @@ class GradeController extends Controller
             'schoolClass' => $schoolClass,
             'subject' => $subject,
             'term' => $term,
+            'termMax' => $termMax,
             'rows' => $rows,
             'classAverage' => $classAverage,
+            'classAverageMarks' => $classAverageMarks,
             'classAverageLetter' => $classAverageLetter,
             'academicYear' => $year,
             'boundaries' => GradeBoundary::ordered(),
@@ -132,6 +148,77 @@ class GradeController extends Controller
         ]);
     }
 
+    public function printSheet(Request $request): View
+    {
+        $user = $request->user();
+        $year = AcademicYear::current();
+        $classes = $this->accessibleClasses($user, $year);
+        $allSubjects = Subject::query()->orderBy('sort_order')->get();
+
+        $schoolClass = $this->resolveClass($request, $classes);
+        abort_unless($schoolClass !== null, 404);
+
+        $subjects = $this->gradableSubjects($user, $schoolClass, $allSubjects);
+        $subject = $this->resolveSubject($request, $subjects);
+        abort_unless($subject !== null, 404);
+        abort_unless($user->canEnterGradesForSubject($schoolClass, $subject), 403);
+
+        $term = $this->resolveTerm($request);
+        $termMax = TermMarks::maxFor($term);
+
+        $enrollments = $schoolClass->activeEnrollments()
+            ->with('student')
+            ->orderBy('roll_number')
+            ->get();
+
+        $existing = Grade::query()
+            ->where('class_id', $schoolClass->id)
+            ->where('subject_id', $subject->id)
+            ->where('term', $term)
+            ->where('academic_year', $year)
+            ->get()
+            ->keyBy('student_id');
+
+        $rows = $enrollments->map(function (Enrollment $enrollment) use ($existing, $term) {
+            $student = $enrollment->student;
+            $grade = $existing->get($student->id);
+            if ($grade?->score_marks !== null) {
+                $score = (string) $grade->score_marks;
+            } elseif ($grade?->score_percent !== null) {
+                $score = (string) TermMarks::marksFromPercent((float) $grade->score_percent, $term);
+            } else {
+                $score = '';
+            }
+
+            $percent = is_numeric($score)
+                ? TermMarks::percentFromMarks((float) $score, $term)
+                : null;
+
+            return [
+                'student' => $student,
+                'roll' => str_pad((string) $enrollment->roll_number, 2, '0', STR_PAD_LEFT),
+                'score' => $score,
+                'percent' => $percent,
+                'letter' => $percent !== null ? GradeScale::letterFor($percent) : null,
+                'remarks' => $grade?->remarks ?? '',
+            ];
+        });
+
+        $numeric = $rows->pluck('percent')->filter(fn ($p) => $p !== null);
+        $classAverage = $numeric->isNotEmpty() ? round((float) $numeric->avg(), 1) : null;
+
+        return view('grades.print-sheet', [
+            'schoolClass' => $schoolClass,
+            'subject' => $subject,
+            'term' => $term,
+            'termMax' => $termMax,
+            'rows' => $rows,
+            'classAverage' => $classAverage,
+            'classAverageLetter' => $classAverage !== null ? GradeScale::letterFor($classAverage) : null,
+            'academicYear' => $year,
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $user = $request->user();
@@ -142,7 +229,7 @@ class GradeController extends Controller
             'subject_id' => ['required', 'integer', 'exists:subjects,id'],
             'term' => ['required', Rule::enum(AcademicTerm::class)],
             'scores' => ['nullable', 'array'],
-            'scores.*' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'scores.*' => ['nullable', 'numeric', 'min:0'],
             'remarks' => ['nullable', 'array'],
             'remarks.*' => ['nullable', 'string', 'max:255'],
             'edit_notes' => ['nullable', 'array'],
@@ -157,6 +244,7 @@ class GradeController extends Controller
         abort_unless($user->canEnterGradesForSubject($schoolClass, $subject), 403);
 
         $term = AcademicTerm::from($data['term']);
+        $termMax = TermMarks::maxFor($term);
         $scores = $data['scores'] ?? [];
         $remarks = $data['remarks'] ?? [];
         $editNotes = $data['edit_notes'] ?? [];
@@ -186,9 +274,15 @@ class GradeController extends Controller
             $remark = trim((string) ($remarks[$studentId] ?? ''));
             $note = trim((string) ($editNotes[$studentId] ?? ''));
 
+            $existingMarks = $existing
+                ? ($existing->score_marks !== null
+                    ? (float) $existing->score_marks
+                    : TermMarks::marksFromPercent((float) $existing->score_percent, $term))
+                : null;
+
             if (GradeEditRules::isLockedFor($user, $existing)) {
                 if ($existing) {
-                    $oldScore = (string) $existing->score_percent;
+                    $oldScore = (string) $existingMarks;
                     $newScore = $isClear ? '' : (string) round((float) $raw, 2);
                     $remarkChanged = ($existing->remarks ?? '') !== ($remark !== '' ? $remark : '');
                     if ($oldScore !== $newScore || $remarkChanged) {
@@ -201,14 +295,21 @@ class GradeController extends Controller
 
             if ($isClear) {
                 if ($existing) {
-                    $errors['scores.'.$studentId] = 'Clearing a saved grade is not allowed. Enter a score from 0–100.';
+                    $errors['scores.'.$studentId] = 'Clearing a saved grade is not allowed. Enter a score from 0–'.$termMax.'.';
                 }
 
                 continue;
             }
 
-            $score = round((float) $raw, 2);
-            $letter = GradeScale::letterFor($score);
+            $marks = round((float) $raw, 2);
+            if ($marks > $termMax) {
+                $errors['scores.'.$studentId] = 'Score must be between 0 and '.$termMax.' for '.$term->label().'.';
+
+                continue;
+            }
+
+            $percent = TermMarks::percentFromMarks($marks, $term);
+            $letter = GradeScale::letterFor($percent);
             if ($letter === null) {
                 $errors['scores.'.$studentId] = 'Score is outside the grading scale.';
 
@@ -216,7 +317,7 @@ class GradeController extends Controller
             }
 
             if ($existing) {
-                $scoreChanged = round((float) $existing->score_percent, 2) !== $score;
+                $scoreChanged = round((float) $existingMarks, 2) !== $marks;
                 $newRemark = $remark !== '' ? $remark : null;
                 $remarkChanged = ($existing->remarks ?? '') !== ($newRemark ?? '');
 
@@ -235,7 +336,8 @@ class GradeController extends Controller
                 $intended[] = [
                     'type' => 'update',
                     'student_id' => $studentId,
-                    'score' => $score,
+                    'marks' => $marks,
+                    'percent' => $percent,
                     'letter' => $letter,
                     'remark' => $newRemark,
                     'note' => $note !== '' ? $note : null,
@@ -246,7 +348,8 @@ class GradeController extends Controller
                 $intended[] = [
                     'type' => 'create',
                     'student_id' => $studentId,
-                    'score' => $score,
+                    'marks' => $marks,
+                    'percent' => $percent,
                     'letter' => $letter,
                     'remark' => $remark !== '' ? $remark : null,
                 ];
@@ -284,7 +387,8 @@ class GradeController extends Controller
                         'subject_id' => $subject->id,
                         'term' => $term,
                         'academic_year' => $year,
-                        'score_percent' => $item['score'],
+                        'score_marks' => $item['marks'],
+                        'score_percent' => $item['percent'],
                         'letter_grade' => $item['letter'],
                         'remarks' => $item['remark'],
                         'entered_by' => $user->id,
@@ -315,11 +419,15 @@ class GradeController extends Controller
                     continue;
                 }
 
+                $oldMarks = $existing->score_marks !== null
+                    ? (float) $existing->score_marks
+                    : TermMarks::marksFromPercent((float) $existing->score_percent, $term);
+
                 GradeEditLog::query()->create([
                     'grade_id' => $existing->id,
                     'edited_by' => $user->id,
-                    'old_score' => $existing->score_percent,
-                    'new_score' => $item['score'],
+                    'old_score' => $oldMarks,
+                    'new_score' => $item['marks'],
                     'old_letter' => $existing->letter_grade?->value,
                     'new_letter' => $item['letter']->value,
                     'old_remarks' => $existing->remarks,
@@ -328,7 +436,8 @@ class GradeController extends Controller
                 ]);
 
                 $existing->update([
-                    'score_percent' => $item['score'],
+                    'score_marks' => $item['marks'],
+                    'score_percent' => $item['percent'],
                     'letter_grade' => $item['letter'],
                     'remarks' => $item['remark'],
                     'entered_by' => $user->id,
@@ -352,54 +461,6 @@ class GradeController extends Controller
                 'term' => $term->value,
             ])
             ->with('status', $message);
-    }
-
-    public function boundaries(Request $request): View
-    {
-        $year = AcademicYear::current();
-
-        return view('grades.boundaries', [
-            'boundaries' => GradeBoundary::ordered(),
-            'canEdit' => $request->user()->isAdmin(),
-            'letters' => LetterGrade::cases(),
-            'canGenerateReports' => $request->user()->canGenerateAnyGradeReport($year),
-        ]);
-    }
-
-    public function updateBoundaries(Request $request): RedirectResponse
-    {
-        abort_unless($request->user()->isAdmin(), 403);
-
-        $data = $request->validate([
-            'boundaries' => ['required', 'array', 'min:1'],
-            'boundaries.*.letter' => ['required', 'string', Rule::in(array_column(LetterGrade::cases(), 'value'))],
-            'boundaries.*.min_percent' => ['required', 'integer', 'min:0', 'max:100'],
-            'boundaries.*.max_percent' => ['required', 'integer', 'min:0', 'max:100'],
-            'boundaries.*.remark' => ['nullable', 'string', 'max:64'],
-        ]);
-
-        GradeScale::assertContiguous($data['boundaries']);
-
-        DB::transaction(function () use ($data) {
-            $keep = [];
-            foreach ($data['boundaries'] as $row) {
-                $boundary = GradeBoundary::query()->updateOrCreate(
-                    ['letter' => $row['letter']],
-                    [
-                        'min_percent' => (int) $row['min_percent'],
-                        'max_percent' => (int) $row['max_percent'],
-                        'remark' => trim((string) ($row['remark'] ?? '')) ?: null,
-                    ]
-                );
-                $keep[] = $boundary->id;
-            }
-
-            GradeBoundary::query()->whereNotIn('id', $keep)->delete();
-        });
-
-        return redirect()
-            ->route('grades.boundaries')
-            ->with('status', 'Grade boundaries updated.');
     }
 
     public function report(Request $request): View
@@ -517,7 +578,11 @@ class GradeController extends Controller
      */
     private function gradableSubjects($user, SchoolClass $schoolClass, $allSubjects)
     {
-        if ($user->isAdmin()) {
+        if ($user->isAdmin() || $user->hasPermission('classes.manage')) {
+            return $allSubjects;
+        }
+
+        if ($user->isHomeroomTeacherOf($schoolClass)) {
             return $allSubjects;
         }
 
@@ -527,6 +592,8 @@ class GradeController extends Controller
     }
 
     /**
+     * Classes for marks entry: admins all; staff see timetable + Form Master classes.
+     *
      * @return \Illuminate\Support\Collection<int, SchoolClass>
      */
     private function accessibleClasses($user, string $year)
@@ -537,16 +604,22 @@ class GradeController extends Controller
             ->orderBy('form_level')
             ->orderBy('section');
 
-        if ($user->isTeacher()) {
-            $ids = $user->taughtClassIds($year);
-            $query->whereIn('id', $ids ?: [0]);
+        if (! $user->isAdmin() && ! $user->hasPermission('classes.manage')) {
+            $ids = array_values(array_unique(array_merge(
+                $user->taughtClassIds($year),
+                $user->homeroomClassIds($year),
+            )));
+
+            if ($user->staff_id || $user->isTeacher()) {
+                $query->whereIn('id', $ids ?: [0]);
+            }
         }
 
         return $query->get();
     }
 
     /**
-     * Classes available for student report cards (admins: all; teachers: headmaster only).
+     * Classes available for student report cards (admins: all; Form Masters: their classes).
      *
      * @return \Illuminate\Support\Collection<int, SchoolClass>
      */
@@ -558,7 +631,7 @@ class GradeController extends Controller
             ->orderBy('form_level')
             ->orderBy('section');
 
-        if ($user->isTeacher()) {
+        if (! $user->isAdmin() && ! $user->hasPermission('classes.manage')) {
             $ids = $user->homeroomClassIds($year);
             $query->whereIn('id', $ids ?: [0]);
         }
@@ -583,13 +656,19 @@ class GradeController extends Controller
     }
 
     /**
+     * Pick the requested subject when the actor may grade it; otherwise the first allowed one.
+     * Avoids 403 when switching class while an old subject id is still in the query string.
+     *
      * @param  \Illuminate\Support\Collection<int, Subject>  $subjects
      */
     private function resolveSubject(Request $request, $subjects): ?Subject
     {
         $requestedId = (int) $request->query('subject', 0);
         if ($requestedId > 0) {
-            return $subjects->firstWhere('id', $requestedId) ?? $subjects->first();
+            $match = $subjects->firstWhere('id', $requestedId);
+            if ($match !== null) {
+                return $match;
+            }
         }
 
         return $subjects->first();

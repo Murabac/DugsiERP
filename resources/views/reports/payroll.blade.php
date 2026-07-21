@@ -11,6 +11,7 @@
 
     <x-section-header title="Payroll Report" :sub="'Staff salary summary by month · AY '.$academicYear">
         <x-slot:action>
+            <x-btn variant="secondary" :href="route('reports.payroll.print', request()->query())" target="_blank">Print</x-btn>
             <x-btn variant="secondary" href="{{ route('payroll.index') }}">Open Payroll</x-btn>
         </x-slot:action>
     </x-section-header>

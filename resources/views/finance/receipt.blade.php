@@ -40,6 +40,7 @@
 <div class="actions no-print">
     <button type="button" class="btn-primary" onclick="window.print()">Print receipt</button>
     <a href="{{ route('finance.fee-collection', ['month' => $invoice->billing_month->format('Y-m')]) }}" class="btn-secondary">Back to Fee Collection</a>
+    <a href="{{ route('modules.home') }}" class="btn-secondary">Apps</a>
 </div>
 
 <div class="sheet">

@@ -28,7 +28,8 @@
 </head>
 <body>
 <div class="sheet">
-    <div class="no-print" style="margin-bottom:16px;">
+    <div class="no-print" style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <a href="{{ route('modules.home') }}" style="color:#64748b;font-size:13px;text-decoration:none;">← Apps</a>
         <button onclick="window.print()" style="padding:8px 14px;background:#1e3a6e;color:#fff;border:0;border-radius:6px;cursor:pointer;">Print</button>
     </div>
 
@@ -75,6 +76,7 @@
             <tr>
                 <th>Subject</th>
                 <th>Score</th>
+                <th>%</th>
                 <th>Grade</th>
                 <th>Remarks</th>
             </tr>
@@ -83,7 +85,8 @@
             @foreach ($report['rows'] as $row)
                 <tr>
                     <td>{{ $row['subject']->name }}</td>
-                    <td>{{ $row['score'] !== null ? number_format($row['score'], 1).'%' : '—' }}</td>
+                    <td>{{ $row['marks'] !== null ? number_format($row['marks'], 1) : '—' }}</td>
+                    <td>{{ $row['percent'] !== null ? number_format($row['percent'], 1).'%' : '—' }}</td>
                     <td>{{ $row['letter']?->value ?? '—' }}</td>
                     <td>{{ $row['remarks'] ?? '—' }}</td>
                 </tr>
@@ -95,7 +98,8 @@
         <div>
             <strong>Term Average:</strong>
             @if ($report['average'] !== null)
-                {{ number_format($report['average'], 1) }}%
+                {{ number_format($report['average_marks'], 1) }}/{{ number_format($report['term_max'], $report['term_max'] == (int) $report['term_max'] ? 0 : 1) }}
+                ({{ number_format($report['average'], 1) }}%)
                 @if ($report['average_letter'])
                     ({{ $report['average_letter']->value }})
                 @endif

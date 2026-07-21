@@ -9,6 +9,8 @@
         :sub="now()->format('l, j F Y').' · Academic Year '.$academicYear.($user->isSuperAdmin() ? ' · Super Admin' : '')"
     />
 
+    @include('partials.staff-checkin-tab')
+
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         @foreach ($stats as $i => $stat)
             <x-stat-card

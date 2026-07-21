@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', config('app.name', 'Dugsi ERP'))</title>
+    @include('partials.anti-fouc', ['antiFoucBg' => '#f1f5f9'])
     @fonts
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @include('partials.anti-fouc-ready')
 </head>
 <body class="min-h-screen bg-dugsi-page text-slate-900 antialiased">
     @yield('content')

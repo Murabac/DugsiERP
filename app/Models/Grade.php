@@ -19,6 +19,7 @@ class Grade extends Model
         'subject_id',
         'term',
         'academic_year',
+        'score_marks',
         'score_percent',
         'letter_grade',
         'remarks',
@@ -30,6 +31,7 @@ class Grade extends Model
     {
         return [
             'term' => AcademicTerm::class,
+            'score_marks' => 'decimal:2',
             'score_percent' => 'decimal:2',
             'letter_grade' => LetterGrade::class,
             'first_entered_at' => 'datetime',

@@ -38,6 +38,7 @@
 <div class="actions no-print">
     <button type="button" class="btn-primary" onclick="window.print()">Print payslip</button>
     <a href="{{ route('payroll.show', $run) }}" class="btn-secondary">Back to payroll run</a>
+    <a href="{{ route('modules.home') }}" class="btn-secondary">Apps</a>
 </div>
 
 <div class="sheet">

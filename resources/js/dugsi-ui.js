@@ -114,6 +114,8 @@ const DugsiUI = {
 
         return Swal.fire({
             ...swalDefaults,
+            // Long staff/settings forms need natural height + scroll; heightAuto:false clips fields.
+            heightAuto: true,
             ...(title ? { title } : {}),
             html: el,
             width,
@@ -128,6 +130,10 @@ const DugsiUI = {
                 closeButton: 'dugsi-swal-close',
             },
             didOpen: (popup) => {
+                popup.querySelectorAll('[data-date-select]').forEach((node) => {
+                    delete node.dataset.dateWired;
+                });
+                window.DugsiUI?.wireDateSelects?.(popup);
                 options.onOpen?.(popup, el);
             },
             willClose: () => {
@@ -143,6 +149,10 @@ const DugsiUI = {
 
     close() {
         Swal.close();
+    },
+
+    wireDateSelects(root = document) {
+        window.dispatchEvent(new CustomEvent('dugsi:wire-date-selects', { detail: { root } }));
     },
 
     /**
@@ -177,6 +187,16 @@ const DugsiUI = {
             }
 
             event.preventDefault();
+            event.stopPropagation();
+
+            // Forms opened via openModal live inside a Swal popup. Nesting a confirm
+            // Swal closes that popup mid-flow and requestSubmit often never posts.
+            // Close the form modal first so the node is restored, then confirm.
+            if (form.closest('.swal2-container') && Swal.isVisible()) {
+                Swal.close();
+                await new Promise((resolve) => setTimeout(resolve, 80));
+            }
+
             const ok = await this.confirm({
                 title: form.getAttribute('data-dugsi-confirm-title') || 'Please confirm',
                 text: form.getAttribute('data-dugsi-confirm') || 'Are you sure?',
@@ -188,8 +208,21 @@ const DugsiUI = {
 
             if (ok) {
                 form.dataset.dugsiConfirmed = '1';
-                form.requestSubmit();
+                // Native submit() skips the submit event (avoids re-entrancy / disabled submitter issues).
+                HTMLFormElement.prototype.submit.call(form);
+            } else {
+                delete form.dataset.dugsiConfirmed;
             }
+        });
+
+        // bfcache can restore a page after confirm+submit with dugsiConfirmed still set.
+        window.addEventListener('pageshow', (event) => {
+            if (! event.persisted) {
+                return;
+            }
+            document.querySelectorAll('form[data-dugsi-confirm][data-dugsi-confirmed]').forEach((form) => {
+                delete form.dataset.dugsiConfirmed;
+            });
         });
     },
 };

@@ -30,6 +30,7 @@
 <div class="actions no-print">
     <button type="button" class="btn-primary" onclick="window.print()">Print receipt</button>
     <a href="{{ route('documents.index', ['tab' => 'history']) }}" class="btn-secondary">Back</a>
+    <a href="{{ route('modules.home') }}" class="btn-secondary">Apps</a>
 </div>
 <div class="sheet">
     <div class="header">

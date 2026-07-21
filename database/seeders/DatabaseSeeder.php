@@ -45,6 +45,7 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        $this->seedSubjectsCatalog();
         $this->seedStaffAndUsers();
         $this->seedSubjectsAndAssignments();
         $this->seedClassesAndStudents();
@@ -59,6 +60,7 @@ class DatabaseSeeder extends Seeder
     private function seedStaffAndUsers(): void
     {
         $password = Hash::make('password');
+        $fullWeek = Staff::defaultWorkSchedule();
 
         // Demo logins + design-reference staff (App.tsx STAFF list).
         $people = [
@@ -70,6 +72,7 @@ class DatabaseSeeder extends Seeder
                     'fixed_salary_usd' => 800,
                     'date_joined' => '2016-01-10',
                     'phone' => '+252634000001',
+                    'phones' => ['+252634000001'],
                     'gender' => Gender::Male,
                 ],
                 'user' => [
@@ -85,6 +88,7 @@ class DatabaseSeeder extends Seeder
                     'fixed_salary_usd' => 720,
                     'date_joined' => '2017-03-05',
                     'phone' => '+252634000005',
+                    'phones' => ['+252634000005'],
                     'gender' => Gender::Male,
                 ],
                 'user' => [
@@ -100,6 +104,7 @@ class DatabaseSeeder extends Seeder
                     'fixed_salary_usd' => 680,
                     'date_joined' => '2020-06-01',
                     'phone' => '+252634000006',
+                    'phones' => ['+252634000006'],
                     'gender' => Gender::Female,
                 ],
                 'user' => [
@@ -112,11 +117,13 @@ class DatabaseSeeder extends Seeder
                     'employee_code' => 'EMP-001',
                     'full_name' => 'Abdirahman Farah Jama',
                     'role_label' => StaffRoleLabel::Teacher,
-                    'subject_specialty' => 'Mathematics',
+                    'subjects' => ['Mathematics', 'Physics'],
+                    'work_days' => $fullWeek,
                     'qualification' => "Bachelor's Degree",
                     'fixed_salary_usd' => 620,
                     'date_joined' => '2019-09-01',
                     'phone' => '+252634000101',
+                    'phones' => ['+252634000101', '+252634000201'],
                     'gender' => Gender::Male,
                 ],
                 'user' => [
@@ -126,25 +133,67 @@ class DatabaseSeeder extends Seeder
             ],
         ];
 
+        // code, name, subjects[], schedule, salary, joined, gender, phones[]
         $extraTeachers = [
-            ['EMP-002', 'Hodan Jama Axmed', 'English', 590, '2020-01-15', Gender::Female, '+252634000102'],
-            ['EMP-003', 'Mohamed Ali Warsame', 'Physics', 650, '2018-08-20', Gender::Male, '+252634000103'],
-            ['EMP-004', 'Fatuma Hassan Dirie', 'Biology', 570, '2021-02-10', Gender::Female, '+252634000104'],
-            ['EMP-007', 'Xaawo Ibrahim Muuse', 'Somali Language', 580, '2019-09-01', Gender::Female, '+252634000107'],
-            ['EMP-008', 'Axmed Muuse Warsame', 'Arabic Language', 600, '2018-01-10', Gender::Male, '+252634000108'],
-            ['EMP-009', 'Yusuf Cabdi Axmed', 'Islamic Studies', 575, '2020-09-01', Gender::Male, '+252634000109'],
-            ['EMP-010', 'Nuur Axmed Gaas', 'Geography', 560, '2021-09-01', Gender::Male, '+252634000110'],
-            ['EMP-011', 'Raxmo Warsame Dirie', 'History', 555, '2022-01-15', Gender::Female, '+252634000111'],
-            ['EMP-012', 'Khalid Daahir Ciise', 'Chemistry', 610, '2019-09-01', Gender::Male, '+252634000112'],
+            [
+                'EMP-002', 'Hodan Jama Axmed', ['English', 'Somali Language'], $fullWeek, 590, '2020-01-15', Gender::Female,
+                ['+252634000102', '+252634000202'],
+            ],
+            [
+                'EMP-003', 'Mohamed Ali Warsame', ['Physics', 'Mathematics'], $this->seedScheduleMorningHeavy(), 650, '2018-08-20', Gender::Male,
+                ['+252634000103'],
+            ],
+            [
+                'EMP-004', 'Fatuma Hassan Dirie', ['Biology', 'Chemistry'], $this->seedScheduleAfternoonHeavy(), 570, '2021-02-10', Gender::Female,
+                ['+252634000104', '+252634000204'],
+            ],
+            [
+                'EMP-007', 'Xaawo Ibrahim Muuse', ['Somali Language'], $fullWeek, 580, '2019-09-01', Gender::Female,
+                ['+252634000107'],
+            ],
+            [
+                'EMP-008', 'Axmed Muuse Warsame', ['Arabic Language', 'Islamic Studies'], $this->seedScheduleAlternateDays(), 600, '2018-01-10', Gender::Male,
+                ['+252634000108'],
+            ],
+            [
+                'EMP-009', 'Yusuf Cabdi Axmed', ['Islamic Studies', 'Arabic Language'], $fullWeek, 575, '2020-09-01', Gender::Male,
+                ['+252634000109', '+252634000209'],
+            ],
+            [
+                'EMP-010', 'Nuur Axmed Gaas', ['Geography', 'History'], $this->seedScheduleMorningHeavy(), 560, '2021-09-01', Gender::Male,
+                ['+252634000110'],
+            ],
+            [
+                'EMP-011', 'Raxmo Warsame Dirie', ['History', 'Geography'], $this->seedScheduleAfternoonHeavy(), 555, '2022-01-15', Gender::Female,
+                ['+252634000111'],
+            ],
+            [
+                'EMP-012', 'Khalid Daahir Ciise', ['Chemistry', 'Biology', 'Physics'], $fullWeek, 610, '2019-09-01', Gender::Male,
+                ['+252634000112', '+252634000212'],
+            ],
         ];
 
         foreach ($people as $row) {
+            $subjects = $row['staff']['subjects'] ?? [];
+            unset($row['staff']['subjects']);
+
             $staffData = array_merge([
                 'status' => StaffStatus::Active,
                 'subject_specialty' => null,
                 'qualification' => null,
                 'gender' => null,
+                'phones' => null,
+                'work_days' => null,
             ], $row['staff']);
+
+            if ($subjects !== []) {
+                $phones = Staff::normalizePhones($staffData['phones'] ?? (filled($staffData['phone'] ?? null) ? [$staffData['phone']] : []));
+                $schedule = Staff::normalizeWorkSchedule($staffData['work_days'] ?? Staff::defaultWorkSchedule());
+                $staffData['phones'] = $phones !== [] ? $phones : null;
+                $staffData['phone'] = $phones[0] ?? ($staffData['phone'] ?? null);
+                $staffData['work_days'] = $schedule !== [] ? $schedule : null;
+                $staffData['subject_specialty'] = $subjects[0];
+            }
 
             // Preserve a locally created EMP-001 (e.g. personal admin) — put Math teacher on EMP-101 instead.
             if ($row['staff']['employee_code'] === 'EMP-001') {
@@ -159,13 +208,17 @@ class DatabaseSeeder extends Seeder
                 $staffData
             );
 
+            if ($subjects !== []) {
+                $this->syncTeacherSubjects($staff, $subjects);
+            }
+
             User::query()->updateOrCreate(
                 ['email' => $row['user']['email']],
                 [
                     'name' => $staff->full_name,
                     'phone' => $staff->phone,
                     'password' => $password,
-                    'role' => $row['user']['role'],
+                    'role' => $row['user']['role']->value,
                     'is_active' => true,
                     'staff_id' => $staff->id,
                     'email_verified_at' => now(),
@@ -173,25 +226,32 @@ class DatabaseSeeder extends Seeder
             );
         }
 
-        foreach ($extraTeachers as [$code, $name, $subject, $salary, $joined, $gender, $phone]) {
-            Staff::query()->updateOrCreate(
+        foreach ($extraTeachers as [$code, $name, $subjects, $schedule, $salary, $joined, $gender, $phones]) {
+            $phones = Staff::normalizePhones($phones);
+            $schedule = Staff::normalizeWorkSchedule($schedule);
+
+            $staff = Staff::query()->updateOrCreate(
                 ['employee_code' => $code],
                 [
                     'full_name' => $name,
                     'role_label' => StaffRoleLabel::Teacher,
-                    'subject_specialty' => $subject,
+                    'subject_specialty' => $subjects[0] ?? null,
+                    'work_days' => $schedule !== [] ? $schedule : null,
                     'fixed_salary_usd' => $salary,
                     'date_joined' => $joined,
                     'gender' => $gender,
-                    'phone' => $phone,
+                    'phone' => $phones[0] ?? null,
+                    'phones' => $phones !== [] ? $phones : null,
                     'qualification' => "Bachelor's Degree",
                     'status' => StaffStatus::Active,
                 ]
             );
+
+            $this->syncTeacherSubjects($staff, $subjects);
         }
     }
 
-    private function seedSubjectsAndAssignments(): void
+    private function seedSubjectsCatalog(): void
     {
         foreach (Subjects::all() as $index => $name) {
             Subject::query()->updateOrCreate(
@@ -199,25 +259,136 @@ class DatabaseSeeder extends Seeder
                 ['sort_order' => $index + 1]
             );
         }
+    }
 
+    private function seedSubjectsAndAssignments(): void
+    {
+        $this->seedSubjectsCatalog();
+
+        // Ensure every teacher with a specialty has at least that assignment (gap fill).
         $teachers = Staff::query()
             ->where('role_label', StaffRoleLabel::Teacher)
             ->whereNotNull('subject_specialty')
             ->get();
 
         foreach ($teachers as $teacher) {
-            $subject = Subject::query()->where('name', $teacher->subject_specialty)->first();
-            if (! $subject) {
-                continue;
+            $names = $teacher->subjectNames();
+            if ($names === [] && filled($teacher->subject_specialty)) {
+                $names = [(string) $teacher->subject_specialty];
             }
+            if ($names !== []) {
+                $this->syncTeacherSubjects($teacher, $names);
+            }
+        }
+    }
+
+    /**
+     * @param  list<string>  $subjectNames
+     */
+    private function syncTeacherSubjects(Staff $staff, array $subjectNames): void
+    {
+        $subjectIds = [];
+        foreach ($subjectNames as $index => $name) {
+            $catalogIndex = array_search($name, Subjects::all(), true);
+            $subject = Subject::query()->firstOrCreate(
+                ['name' => $name],
+                ['sort_order' => $catalogIndex === false ? ($index + 1) : ($catalogIndex + 1)]
+            );
+            $subjectIds[] = $subject->id;
 
             TeacherSubjectAssignment::query()->updateOrCreate(
                 [
-                    'staff_id' => $teacher->id,
+                    'staff_id' => $staff->id,
                     'subject_id' => $subject->id,
                 ],
                 ['class_id' => null]
             );
+        }
+
+        $query = TeacherSubjectAssignment::query()
+            ->where('staff_id', $staff->id)
+            ->whereNull('class_id');
+
+        if ($subjectIds !== []) {
+            $query->whereNotIn('subject_id', $subjectIds);
+        }
+
+        $query->delete();
+    }
+
+    /** Morning-focused: first shift most days, second on Sat/Wed only. */
+    private function seedScheduleMorningHeavy(): array
+    {
+        return [
+            'sat' => ['first', 'second'],
+            'sun' => ['first'],
+            'mon' => ['first'],
+            'tue' => ['first'],
+            'wed' => ['first', 'second'],
+        ];
+    }
+
+    /** Afternoon-focused: second shift most days, first on Sat/Mon. */
+    private function seedScheduleAfternoonHeavy(): array
+    {
+        return [
+            'sat' => ['first', 'second'],
+            'sun' => ['second'],
+            'mon' => ['first', 'second'],
+            'tue' => ['second'],
+            'wed' => ['second'],
+        ];
+    }
+
+    /** Alternate days / shifts across the school week. */
+    private function seedScheduleAlternateDays(): array
+    {
+        return [
+            'sat' => ['first'],
+            'sun' => ['second'],
+            'mon' => ['first'],
+            'tue' => ['second'],
+            'wed' => ['first', 'second'],
+        ];
+    }
+
+    private function seedTeacherClassAssignments(string $year): void
+    {
+        $classes = SchoolClass::query()
+            ->where('academic_year', $year)
+            ->where('status', ClassStatus::Active)
+            ->orderBy('form_level')
+            ->orderBy('section')
+            ->get()
+            ->keyBy(fn (SchoolClass $c) => $c->form_level.'-'.$c->section);
+
+        $map = [
+            'EMP-001' => ['1-A', '1-B', '2-A'],
+            'EMP-101' => ['1-A', '1-B', '2-A'],
+            'EMP-002' => ['1-A', '2-A', '3-A'],
+            'EMP-003' => ['2-A', '2-B', '3-B'],
+            'EMP-004' => ['3-A', '4-A'],
+            'EMP-007' => ['1-A', '1-B'],
+            'EMP-008' => ['2-B', '3-A'],
+            'EMP-009' => ['1-B', '2-A', '4-A'],
+            'EMP-010' => ['3-B', '4-B'],
+            'EMP-011' => ['2-B', '4-A'],
+            'EMP-012' => ['3-A', '3-B', '4-A', '4-B'],
+        ];
+
+        foreach ($map as $code => $keys) {
+            $staff = Staff::query()->where('employee_code', $code)->first();
+            if (! $staff) {
+                continue;
+            }
+            $ids = [];
+            foreach ($keys as $key) {
+                $class = $classes->get($key);
+                if ($class) {
+                    $ids[] = $class->id;
+                }
+            }
+            $staff->assignedClasses()->sync($ids);
         }
     }
 
@@ -259,6 +430,8 @@ class DatabaseSeeder extends Seeder
                 ->where('academic_year', $year)
                 ->update(['homeroom_teacher_id' => $mathTeacher->id]);
         }
+
+        $this->seedTeacherClassAssignments($year);
 
         // Design-reference STUDENTS (+ a few extras so every class has roster data).
         $samples = [
@@ -520,11 +693,13 @@ class DatabaseSeeder extends Seeder
 
                 foreach ($enrollments as $enrollment) {
                     foreach ($subjects as $subject) {
-                        $score = 40 + (($enrollment->student_id * 7 + $subject->id * 11 + $class->id * 3 + $termOffset) % 56);
-                        $letter = GradeScale::letterFor((float) $score);
+                        $percent = 40 + (($enrollment->student_id * 7 + $subject->id * 11 + $class->id * 3 + $termOffset) % 56);
+                        $letter = GradeScale::letterFor((float) $percent);
                         if ($letter === null) {
                             continue;
                         }
+
+                        $marks = \App\Support\TermMarks::marksFromPercent((float) $percent, $term);
 
                         Grade::query()->updateOrCreate(
                             [
@@ -535,9 +710,10 @@ class DatabaseSeeder extends Seeder
                                 'academic_year' => $year,
                             ],
                             [
-                                'score_percent' => $score,
+                                'score_marks' => $marks,
+                                'score_percent' => $percent,
                                 'letter_grade' => $letter,
-                                'remarks' => $score >= 85 ? 'Excellent work' : ($score < 40 ? 'Needs support' : null),
+                                'remarks' => $percent >= 85 ? 'Excellent work' : ($percent < 40 ? 'Needs support' : null),
                                 'entered_by' => $enteredBy,
                                 'first_entered_at' => $enteredAt,
                             ]
@@ -557,7 +733,7 @@ class DatabaseSeeder extends Seeder
         \App\Models\SchoolSetting::set('need_based_discount_percent', '20');
 
         // Flag a few students for need-based demo.
-        Student::query()->whereIn('student_code', ['STU-001', 'STU-005'])->update(['need_based_discount' => true]);
+        Student::query()->whereIn('student_code', ['STU-001', 'STU-005'])->update(['need_based_discount_amount' => 9]);
 
         $financeId = User::query()->where('email', 'finance@dugsi.edu.sl')->value('id')
             ?? User::query()->where('email', 'admin@dugsi.edu.sl')->value('id');

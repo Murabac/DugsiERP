@@ -12,7 +12,10 @@
                 · {{ $run->staff_count }} staff · {{ \App\Support\Money::format($run->total_amount) }}
             </p>
         </div>
-        <a href="{{ route('payroll.index') }}" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">All runs</a>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ route('payroll.print', $run) }}" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Print run</a>
+            <a href="{{ route('payroll.index') }}" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">All runs</a>
+        </div>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 text-sm">

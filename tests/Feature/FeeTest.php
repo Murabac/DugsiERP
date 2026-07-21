@@ -61,7 +61,7 @@ class FeeTest extends TestCase
             'dob' => '2011-01-01',
             'gender' => Gender::Female,
             'status' => StudentStatus::Active,
-            'need_based_discount' => false,
+            'need_based_discount_amount' => 0,
         ]);
 
         Enrollment::query()->create([
@@ -104,9 +104,8 @@ class FeeTest extends TestCase
                 'monthly_fee_usd' => 50,
                 'transport_fee_usd' => 15,
                 'sibling_discount_percent' => 15,
-                'need_based_discount_percent' => 25,
             ])
-            ->assertRedirect(route('settings.index', ['tab' => 'school']));
+            ->assertRedirect(route('settings.index', ['tab' => 'fees']));
 
         $this->assertSame(50.0, SchoolSetting::monthlyFeeUsd());
         $this->assertSame(15.0, SchoolSetting::transportFeeUsd());
@@ -117,7 +116,6 @@ class FeeTest extends TestCase
                 'monthly_fee_usd' => 99,
                 'transport_fee_usd' => 15,
                 'sibling_discount_percent' => 0,
-                'need_based_discount_percent' => 0,
             ])
             ->assertForbidden();
     }
@@ -236,7 +234,7 @@ class FeeTest extends TestCase
     public function test_need_based_discount(): void
     {
         ['class' => $class, 'student' => $student] = $this->seedBasics();
-        $student->update(['need_based_discount' => true]);
+        $student->update(['need_based_discount_amount' => 9]);
         FeeCalculator::clearSiblingCache();
 
         $quote = FeeCalculator::quote($student->fresh(), $class, AcademicYear::current());
@@ -246,8 +244,7 @@ class FeeTest extends TestCase
     public function test_full_discount_invoice_is_paid_status(): void
     {
         ['student' => $student, 'class' => $class] = $this->seedBasics();
-        SchoolSetting::set('need_based_discount_percent', '100');
-        $student->update(['need_based_discount' => true]);
+        $student->update(['need_based_discount_amount' => 45]);
         FeeCalculator::clearSiblingCache();
 
         MonthlyInvoiceGenerator::generate(now()->startOfMonth());
@@ -336,7 +333,7 @@ class FeeTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_admin_can_toggle_student_need_based_and_revises_unpaid_invoice(): void
+    public function test_admin_can_set_student_need_based_percent_and_revises_unpaid_invoice(): void
     {
         ['admin' => $admin, 'student' => $student] = $this->seedBasics();
         $this->artisan('fees:generate-monthly')->assertSuccessful();
@@ -346,11 +343,11 @@ class FeeTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('students.need-based', $student), [
-                'need_based_discount' => '1',
+                'need_based_discount_amount' => 9,
             ])
             ->assertRedirect();
 
-        $this->assertTrue($student->fresh()->need_based_discount);
+        $this->assertSame(9.0, (float) $student->fresh()->need_based_discount_amount);
         $invoice->refresh();
         $this->assertSame(36.0, (float) $invoice->amount_due);
         $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
@@ -476,7 +473,6 @@ class FeeTest extends TestCase
                 'monthly_fee_usd' => 60,
                 'transport_fee_usd' => 15,
                 'sibling_discount_percent' => 10,
-                'need_based_discount_percent' => 20,
             ])
             ->assertRedirect();
 

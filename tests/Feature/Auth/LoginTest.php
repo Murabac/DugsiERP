@@ -28,7 +28,7 @@ class LoginTest extends TestCase
         $this->post(route('login'), [
             'login' => 'admin@dugsi.edu.sl',
             'password' => 'password',
-        ])->assertRedirect(route('dashboard'));
+        ])->assertRedirect(route('modules.home'));
 
         $this->assertAuthenticatedAs($user);
     }
@@ -42,7 +42,7 @@ class LoginTest extends TestCase
         $this->post(route('login'), [
             'login' => '+252634000004',
             'password' => 'password',
-        ])->assertRedirect(route('dashboard'));
+        ])->assertRedirect(route('modules.home'));
 
         $this->assertAuthenticatedAs($user);
     }

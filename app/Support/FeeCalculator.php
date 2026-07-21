@@ -40,31 +40,30 @@ class FeeCalculator
         }
 
         $siblingPct = SchoolSetting::siblingDiscountPercent();
-        $needPct = SchoolSetting::needBasedDiscountPercent();
+        $siblingDiscount = $siblingPct > 0 && self::isLaterSibling($student, $academicYear)
+            ? Money::round($base * ($siblingPct / 100))
+            : 0.0;
+        $needDiscount = Money::round(max(0, min($base, (float) ($student->need_based_discount_amount ?? 0))));
 
-        $siblingApplies = $siblingPct > 0 && self::isLaterSibling($student, $academicYear);
-        $needApplies = $needPct > 0 && (bool) $student->need_based_discount;
-
-        $chosenPct = 0;
+        $discount = 0.0;
         $reasons = [];
 
-        if ($siblingApplies && $needApplies) {
-            if ($siblingPct >= $needPct) {
-                $chosenPct = $siblingPct;
+        if ($siblingDiscount > 0 && $needDiscount > 0) {
+            if ($siblingDiscount >= $needDiscount) {
+                $discount = $siblingDiscount;
                 $reasons[] = 'Sibling discount '.$siblingPct.'%';
             } else {
-                $chosenPct = $needPct;
-                $reasons[] = 'Need-based discount '.$needPct.'%';
+                $discount = $needDiscount;
+                $reasons[] = 'Need-based discount '.Money::format($needDiscount);
             }
-        } elseif ($siblingApplies) {
-            $chosenPct = $siblingPct;
+        } elseif ($siblingDiscount > 0) {
+            $discount = $siblingDiscount;
             $reasons[] = 'Sibling discount '.$siblingPct.'%';
-        } elseif ($needApplies) {
-            $chosenPct = $needPct;
-            $reasons[] = 'Need-based discount '.$needPct.'%';
+        } elseif ($needDiscount > 0) {
+            $discount = $needDiscount;
+            $reasons[] = 'Need-based discount '.Money::format($needDiscount);
         }
 
-        $discount = Money::round($base * ($chosenPct / 100));
         $tuitionDue = Money::round(max(0, $base - $discount));
         $transport = self::transportFeeFor($student, $academicYear);
         $due = Money::round($tuitionDue + $transport);

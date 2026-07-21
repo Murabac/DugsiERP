@@ -9,8 +9,9 @@
 <div class="space-y-4">
     <x-section-header title="Fee Collection" :sub="'Class fee sheet · Academic Year '.$academicYear">
         <x-slot:action>
-            @if (auth()->user()->isAdmin())
-                <x-btn variant="secondary" href="{{ route('settings.index', ['tab' => 'school']) }}">Fee Settings</x-btn>
+            <x-btn variant="secondary" href="{{ route('finance.fee-collection.print', request()->query()) }}">Print sheet</x-btn>
+            @if (auth()->user()->hasPermission('fees.generate'))
+                <x-btn variant="secondary" href="{{ route('settings.index', ['tab' => 'fees']) }}">Fee Settings</x-btn>
             @endif
             @if ($canEnsureMonth)
                 <form method="POST" action="{{ route('finance.fee-collection.generate') }}" class="inline"
@@ -37,10 +38,10 @@
     @if (! $feeConfigured)
         <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Monthly fee is not set.
-            @if (auth()->user()->isAdmin())
-                <a href="{{ route('settings.index', ['tab' => 'school']) }}" class="font-medium underline">Set it in Settings → School</a> before invoices can be created.
+            @if (auth()->user()->hasPermission('fees.generate'))
+                <a href="{{ route('settings.index', ['tab' => 'fees']) }}" class="font-medium underline">Set it in Settings → Monthly Fee</a> before invoices can be created.
             @else
-                Ask an admin to set it under Settings → School.
+                Ask an admin to set it under Settings → Monthly Fee.
             @endif
         </div>
     @elseif ($monthNeedsEnsure)
@@ -112,9 +113,9 @@
     <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-700">Fee Sheet — {{ $billingMonth->format('F Y') }}</h3>
-            <button type="button" onclick="window.print()" class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline">
+            <a href="{{ route('finance.fee-collection.print', request()->query()) }}" class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline">
                 <x-icon name="printer" :size="12" /> Print sheet
-            </button>
+            </a>
         </div>
         <table class="w-full min-w-[800px] text-sm">
             <thead>

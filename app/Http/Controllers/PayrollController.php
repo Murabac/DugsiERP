@@ -132,6 +132,16 @@ class PayrollController extends Controller
         ]);
     }
 
+    public function printRun(PayrollRun $payrollRun): View
+    {
+        $payrollRun->load(['items' => fn ($q) => $q->orderBy('full_name'), 'confirmedBy']);
+
+        return view('payroll.print-run', [
+            'run' => $payrollRun,
+            'academicYear' => AcademicYear::current(),
+        ]);
+    }
+
     public function payslip(PayrollRun $payrollRun, PayrollItem $payrollItem): View
     {
         abort_unless((int) $payrollItem->payroll_run_id === (int) $payrollRun->id, 404);

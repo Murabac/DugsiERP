@@ -49,17 +49,17 @@ class AcademicYear
     }
 
     /**
-     * Typical secondary birth-year window (~ages 12–19) relative to the school year.
+     * Allowed birth-year window for student registration (2000 through current year).
      *
      * @return array{min: int, max: int}
      */
     public static function birthYearBounds(?CarbonInterface $date = null): array
     {
-        $start = self::startYear($date);
+        $date ??= now();
 
         return [
-            'min' => $start - 19,
-            'max' => $start - 12,
+            'min' => 2000,
+            'max' => (int) $date->year,
         ];
     }
 

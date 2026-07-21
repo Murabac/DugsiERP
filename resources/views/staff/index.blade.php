@@ -9,7 +9,7 @@
             <h2 class="text-base font-semibold text-slate-900">Staff</h2>
             <p class="mt-0.5 text-xs text-slate-500">{{ $staff->count() }} staff members</p>
         </div>
-        <button type="button" data-dugsi-open="#add-staff-modal" data-dugsi-width="32rem"
+        <button type="button" data-dugsi-open="#add-staff-modal" data-dugsi-width="40rem"
             class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-dugsi-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#162d56] sm:w-auto">
             + Add Staff
         </button>
@@ -25,8 +25,8 @@
             </div>
             <select name="role" class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm sm:w-auto">
                 <option value="">All roles</option>
-                @foreach ($roleLabels as $rl)
-                    <option value="{{ $rl->value }}" @selected($roleFilter === $rl->value)>{{ $rl->label() }}</option>
+                @foreach ($roles as $role)
+                    <option value="{{ $role->key }}" @selected($roleFilter === $role->key)>{{ $role->name }}</option>
                 @endforeach
             </select>
             <select name="status" class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm sm:w-auto">
@@ -58,9 +58,9 @@
                             </div>
                         </td>
                         <td class="px-4 py-2.5">
-                            <x-status-badge :status="$member->role_label->value" :label="$member->role_label->label()" />
+                            <x-status-badge :status="$member->roleKey()" :label="$member->roleDisplayName()" />
                         </td>
-                        <td class="px-4 py-2.5 text-slate-500">{{ $member->subject_specialty ?? '—' }}</td>
+                        <td class="px-4 py-2.5 text-slate-500">{{ $member->subjectsDisplay() !== '' ? $member->subjectsDisplay() : '—' }}</td>
                         <td class="px-4 py-2.5 text-xs text-slate-500">{{ $member->date_joined?->format('Y-m-d') ?? '—' }}</td>
                         <td class="px-4 py-2.5"><x-status-badge :status="$member->status" /></td>
                         <td class="px-4 py-2.5">
@@ -81,7 +81,7 @@
     </div>
 </div>
 
-<div id="add-staff-modal" class="hidden" data-dugsi-width="32rem">
+<div id="add-staff-modal" class="hidden" data-dugsi-width="36rem">
     <form method="POST" action="{{ route('staff.store') }}" class="p-5">
         @csrf
         <h3 class="mb-4 text-sm font-semibold text-slate-900">Add Staff Member</h3>
@@ -96,25 +96,45 @@
                 <div>
                     <label class="mb-1 block text-xs font-medium text-slate-700">Role <span class="text-red-500">*</span></label>
                     <select name="role_label" id="staff-role" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required>
-                        @foreach ($roleLabels as $rl)
-                            <option value="{{ $rl->value }}" @selected(old('role_label', 'teacher') === $rl->value)>{{ $rl->label() }}</option>
+                        @foreach ($roles as $role)
+                            <option value="{{ $role->key }}" @selected(old('role_label', 'teacher') === $role->key)>{{ $role->name }}</option>
                         @endforeach
                     </select>
                 </div>
+                <div id="staff-teacher-fields" @class(['col-span-2 space-y-3' => true, 'hidden' => old('role_label', 'teacher') === 'finance'])>
+                    @include('staff.partials.subject-fields', [
+                        'wrapId' => 'staff-subject-wrap',
+                        'colSpan' => '',
+                        'selectedSubjects' => old('subjects', []),
+                        'currentRole' => old('role_label', 'teacher'),
+                        'hideForFinance' => false,
+                    ])
+                    @include('staff.partials.work-day-fields', [
+                        'wrapId' => 'staff-workdays-wrap',
+                        'colSpan' => '',
+                        'selectedSchedule' => old('work_schedule', \App\Models\Staff::defaultWorkSchedule()),
+                        'weekDays' => $weekDays,
+                        'currentRole' => old('role_label', 'teacher'),
+                        'hideForFinance' => false,
+                    ])
+                    @include('staff.partials.class-fields', [
+                        'wrapId' => 'staff-classes-wrap',
+                        'colSpan' => '',
+                        'selectedClassIds' => old('class_ids', []),
+                        'classes' => $classes,
+                        'currentRole' => old('role_label', 'teacher'),
+                        'hideForFinance' => false,
+                    ])
+                </div>
+                @include('staff.partials.phone-fields', ['phoneValues' => old('phones', [''])])
                 <div>
-                    <label class="mb-1 block text-xs font-medium text-slate-700">Subject</label>
-                    <select name="subject_specialty" id="staff-subject" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Gender</label>
+                    <select name="gender" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                         <option value="">—</option>
-                        @foreach ($subjects as $sub)
-                            <option value="{{ $sub }}" @selected(old('subject_specialty') === $sub)>{{ $sub }}</option>
+                        @foreach ($genders as $g)
+                            <option value="{{ $g->value }}" @selected(old('gender') === $g->value)>{{ $g->label() }}</option>
                         @endforeach
                     </select>
-                    @error('subject_specialty')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="mb-1 block text-xs font-medium text-slate-700">Phone</label>
-                    <input name="phone" value="{{ old('phone') }}" placeholder="+252 63 xxx xxxx"
-                        class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                 </div>
                 <x-date-select
                     name="date_joined"
@@ -136,15 +156,6 @@
                         <option value="">Select</option>
                         @foreach ($qualifications as $q)
                             <option value="{{ $q }}" @selected(old('qualification') === $q)>{{ $q }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="mb-1 block text-xs font-medium text-slate-700">Gender</label>
-                    <select name="gender" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                        <option value="">—</option>
-                        @foreach ($genders as $g)
-                            <option value="{{ $g->value }}" @selected(old('gender') === $g->value)>{{ $g->label() }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -195,6 +206,22 @@
     const checkbox = document.getElementById('create-login');
     const fields = document.getElementById('login-fields');
     checkbox?.addEventListener('change', () => fields?.classList.toggle('hidden', !checkbox.checked));
+
+    const roleSelect = document.getElementById('staff-role');
+    const teacherFields = document.getElementById('staff-teacher-fields');
+
+    const syncTeacherFields = () => {
+        const isFinance = roleSelect?.value === 'finance';
+        teacherFields?.classList.toggle('hidden', isFinance);
+        if (isFinance) {
+            teacherFields?.querySelectorAll('input[type="checkbox"]').forEach((el) => { el.checked = false; });
+        } else if (teacherFields && !teacherFields.querySelector('input[data-schedule-shift]:checked')) {
+            teacherFields.querySelectorAll('input[data-schedule-shift]').forEach((el) => { el.checked = true; });
+        }
+    };
+
+    roleSelect?.addEventListener('change', syncTeacherFields);
+    syncTeacherFields();
 })();
 </script>
 @endsection

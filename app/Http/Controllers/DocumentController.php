@@ -81,7 +81,7 @@ class DocumentController extends Controller
             'document_type' => ['required', Rule::enum(DocumentType::class)],
             'student_id' => ['required', 'integer', 'exists:students,id'],
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
-            'term' => ['nullable', Rule::enum(AcademicTerm::class)],
+            'term' => ['nullable', 'string', Rule::in(GradeReport::documentTermValues())],
             'payment_id' => ['nullable', 'integer', 'exists:payments,id'],
             'reason' => ['nullable', 'string', 'max:255'],
             'date_of_leaving' => ['nullable', 'date'],
@@ -152,23 +152,45 @@ class DocumentController extends Controller
                 ]);
             }
 
-            $term = $data['term'] instanceof AcademicTerm
-                ? $data['term']
-                : AcademicTerm::from($data['term']);
-            $report = GradeReport::for($student, $schoolClass, $term, $year);
+            $termRaw = (string) $data['term'];
+            if ($termRaw === GradeReport::ALL_TERMS) {
+                $report = GradeReport::forAllTerms($student, $schoolClass, $year);
+                $payload['term'] = 'All Terms';
+                $payload['all_terms'] = true;
+                $payload['terms'] = collect($report['terms'])->map(fn (AcademicTerm $t) => $t->label())->all();
+                $payload['attendance_rate'] = $report['attendance_rate'];
+                $payload['average'] = $report['average'];
+                $payload['average_letter'] = $report['average_letter']?->value;
+                $payload['rank'] = $report['rank'];
+                $payload['class_size'] = $report['class_size'];
+                $payload['rows'] = $report['rows']->map(fn ($row) => [
+                    'subject' => $row['subject']->name,
+                    'term_scores' => $row['term_scores'],
+                    'average' => $row['average'],
+                    'letter' => $row['letter']?->value,
+                ])->values()->all();
+            } else {
+                $term = AcademicTerm::from($termRaw);
+                $report = GradeReport::for($student, $schoolClass, $term, $year);
 
-            $payload['term'] = $term->label();
-            $payload['attendance_rate'] = $report['attendance_rate'];
-            $payload['average'] = $report['average'];
-            $payload['average_letter'] = $report['average_letter']?->value;
-            $payload['rank'] = $report['rank'];
-            $payload['class_size'] = $report['class_size'];
-            $payload['rows'] = $report['rows']->map(fn ($row) => [
-                'subject' => $row['subject']->name,
-                'score' => $row['score'],
-                'letter' => $row['letter']?->value,
-                'remarks' => $row['remarks'],
-            ])->values()->all();
+                $payload['term'] = $term->label();
+                $payload['all_terms'] = false;
+                $payload['term_max'] = $report['term_max'];
+                $payload['attendance_rate'] = $report['attendance_rate'];
+                $payload['average'] = $report['average'];
+                $payload['average_marks'] = $report['average_marks'];
+                $payload['average_letter'] = $report['average_letter']?->value;
+                $payload['rank'] = $report['rank'];
+                $payload['class_size'] = $report['class_size'];
+                $payload['rows'] = $report['rows']->map(fn ($row) => [
+                    'subject' => $row['subject']->name,
+                    'marks' => $row['marks'],
+                    'percent' => $row['percent'],
+                    'score' => $row['percent'],
+                    'letter' => $row['letter']?->value,
+                    'remarks' => $row['remarks'],
+                ])->values()->all();
+            }
         }
 
         if ($type === DocumentType::TransferCertificate) {
@@ -208,7 +230,7 @@ class DocumentController extends Controller
             'document_type' => ['required', Rule::enum(DocumentType::class)],
             'student_id' => ['required', 'integer', 'exists:students,id'],
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
-            'term' => ['nullable', Rule::enum(AcademicTerm::class)],
+            'term' => ['nullable', 'string', Rule::in(GradeReport::documentTermValues())],
             'payment_id' => ['nullable', 'integer', 'exists:payments,id'],
             'reason' => ['nullable', 'string', 'max:255'],
             'date_of_leaving' => ['nullable', 'date'],
@@ -302,7 +324,6 @@ class DocumentController extends Controller
     ): View {
         $schoolClass = $document->schoolClass;
         abort_unless($schoolClass !== null && $document->term, 404);
-        $term = AcademicTerm::from($document->term);
 
         $enrollment = Enrollment::query()
             ->where('student_id', $student->id)
@@ -311,14 +332,19 @@ class DocumentController extends Controller
             ->first();
         abort_unless($enrollment !== null, 404);
 
-        $report = GradeReport::for($student, $schoolClass, $term, $year);
+        $allTerms = $document->term === GradeReport::ALL_TERMS;
+        $report = $allTerms
+            ? GradeReport::forAllTerms($student, $schoolClass, $year)
+            : GradeReport::for($student, $schoolClass, AcademicTerm::from($document->term), $year);
 
         return view('documents.print.report-card', [
             'document' => $document,
             'schoolClass' => $schoolClass,
             'student' => $student,
             'enrollment' => $enrollment,
-            'term' => $term,
+            'allTerms' => $allTerms,
+            'termLabel' => $allTerms ? 'All Terms' : AcademicTerm::from($document->term)->label(),
+            'terms' => $report['terms'],
             'academicYear' => $year,
             'report' => $report,
             'issuedAt' => $document->generated_at,

@@ -13,6 +13,9 @@ use App\Models\TimetableSlot;
 use App\Support\AcademicYear;
 use App\Support\SchoolWeek;
 use App\Support\Subjects as SubjectCatalog;
+use App\Support\TimetableGenerator;
+use App\Support\TimetableMoveHints;
+use App\Support\TimetableRequirements;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,12 +38,43 @@ class TimetableController extends Controller
         return $this->teacherIndex($request, $academicYear);
     }
 
+    public function requirements(): View
+    {
+        return view('timetable.requirements', [
+            'report' => TimetableRequirements::analyze(),
+        ]);
+    }
+
     public function print(Request $request): View
     {
         $user = $request->user();
         $academicYear = AcademicYear::current();
 
         if ($user->isAdmin()) {
+            if ($request->query('scope') === 'school') {
+                $classes = SchoolClass::query()
+                    ->where('status', ClassStatus::Active)
+                    ->where('academic_year', $academicYear)
+                    ->orderBy('form_level')
+                    ->orderBy('section')
+                    ->get();
+                abort_unless($classes->isNotEmpty(), 404, 'No active classes available to print.');
+
+                $classGrids = $classes->map(fn (SchoolClass $class) => [
+                    'schoolClass' => $class,
+                    'grid' => $this->buildClassGrid($class, $academicYear),
+                ]);
+
+                return view('timetable.print-school', [
+                    'schoolName' => \App\Models\SchoolSetting::schoolName(),
+                    'academicYear' => $academicYear,
+                    'days' => SchoolWeek::days(),
+                    'periods' => SchoolWeek::periods(),
+                    'classGrids' => $classGrids,
+                    'subjectColors' => SchoolWeek::subjectColors(),
+                ]);
+            }
+
             $class = $this->resolveClass($request, $academicYear);
             abort_unless($class, 404, 'No active class available to print.');
 
@@ -132,6 +166,12 @@ class TimetableController extends Controller
                 ),
             ],
         ]);
+
+        if (! SchoolWeek::dayHasPeriod($data['day_of_week'], (int) $data['period_number'])) {
+            throw ValidationException::withMessages([
+                'period_number' => 'That period is not scheduled on '.SchoolWeek::dayLabel($data['day_of_week']).'.',
+            ]);
+        }
 
         $period = SchoolWeek::period((int) $data['period_number']);
         abort_unless($period, 422);
@@ -260,17 +300,41 @@ class TimetableController extends Controller
             ]);
         }
 
-        // After move/swap, teachers must be free at their new times in other classes.
-        if ($from->teacher_id && $this->teacherIsBusy($academicYear, $toDay, $toPeriod, (int) $from->teacher_id, $classId)) {
+        if (! SchoolWeek::dayHasPeriod($fromDay, $fromPeriod) || ! SchoolWeek::dayHasPeriod($toDay, $toPeriod)) {
             throw ValidationException::withMessages([
-                'to_day' => 'Cannot move: that teacher is already booked in another class at the target period.',
+                'to_day' => 'Cannot move into a period that is not scheduled on that day.',
             ]);
         }
 
-        if ($to?->teacher_id && $this->teacherIsBusy($academicYear, $fromDay, $fromPeriod, (int) $to->teacher_id, $classId)) {
-            throw ValidationException::withMessages([
-                'to_day' => 'Cannot swap: the other teacher is already booked in another class at the source period.',
-            ]);
+        // After move/swap, teachers must be free at their new times in other classes.
+        if ($from->teacher_id) {
+            $conflict = $this->teacherConflictSlot(
+                $academicYear,
+                $toDay,
+                $toPeriod,
+                (int) $from->teacher_id,
+                $classId,
+            );
+            if ($conflict) {
+                throw ValidationException::withMessages([
+                    'to_day' => 'Cannot move: '.$this->teacherConflictMessage($conflict),
+                ]);
+            }
+        }
+
+        if ($to?->teacher_id) {
+            $conflict = $this->teacherConflictSlot(
+                $academicYear,
+                $fromDay,
+                $fromPeriod,
+                (int) $to->teacher_id,
+                $classId,
+            );
+            if ($conflict) {
+                throw ValidationException::withMessages([
+                    'to_day' => 'Cannot swap: '.$this->teacherConflictMessage($conflict),
+                ]);
+            }
         }
 
         DB::transaction(function () use ($from, $to, $toDay, $toPeriod, $fromDay, $fromPeriod) {
@@ -310,20 +374,10 @@ class TimetableController extends Controller
         abort_unless($request->user()->isAdmin(), 403);
 
         $academicYear = AcademicYear::current();
-        $defaults = SchoolWeek::defaultWeeklyPeriods();
+        $defaults = SchoolWeek::weeklyPeriods();
         $subjectNames = SubjectCatalog::all();
 
-        $rules = [
-            'class_id' => [
-                'required',
-                Rule::exists('classes', 'id')->where(
-                    fn ($q) => $q->where('status', ClassStatus::Active->value)
-                        ->where('academic_year', $academicYear)
-                ),
-            ],
-            'periods' => ['required', 'array'],
-        ];
-
+        $rules = ['periods' => ['required', 'array']];
         foreach ($subjectNames as $name) {
             $rules['periods.'.$name] = ['required', 'integer', 'min:0', 'max:'.SchoolWeek::weeklyCapacity()];
         }
@@ -350,9 +404,16 @@ class TimetableController extends Controller
             ]);
         }
 
-        $class = SchoolClass::query()->findOrFail((int) $data['class_id']);
-        $classId = $class->id;
-        $room = $class->classroom();
+        $activeClassCount = SchoolClass::query()
+            ->where('status', ClassStatus::Active)
+            ->where('academic_year', $academicYear)
+            ->count();
+
+        if ($activeClassCount < 1) {
+            throw ValidationException::withMessages([
+                'periods' => 'Create at least one active class before generating timetables.',
+            ]);
+        }
 
         $subjects = Subject::query()->orderBy('sort_order')->get()->keyBy('name');
         $teachersBySubject = TeacherSubjectAssignment::query()
@@ -378,114 +439,17 @@ class TimetableController extends Controller
             ]);
         }
 
-        $placed = 0;
-        $skipped = 0;
+        $result = TimetableGenerator::generateAll($academicYear, $periodCounts);
 
-        DB::transaction(function () use (
-            $classId,
-            $academicYear,
-            $periodCounts,
-            $subjects,
-            $teachersBySubject,
-            $room,
-            &$placed,
-            &$skipped,
-        ) {
-            TimetableSlot::query()
-                ->where('class_id', $classId)
-                ->where('academic_year', $academicYear)
-                ->delete();
-
-            $queue = [];
-            foreach ($periodCounts as $name => $count) {
-                $subject = $subjects->get($name);
-                if (! $subject || $count < 1) {
-                    continue;
-                }
-                for ($i = 0; $i < $count; $i++) {
-                    $queue[] = $subject;
-                }
-            }
-
-            // Class-specific shuffle so each class gets a unique timetable shape.
-            $this->seededShuffle($queue, $classId * 9973 + strlen($academicYear));
-
-            $cells = [];
-            foreach (SchoolWeek::periods() as $period) {
-                foreach (SchoolWeek::days() as $day) {
-                    $cells[] = [$day, $period];
-                }
-            }
-            $this->seededShuffle($cells, $classId * 7919 + 17);
-
-            $busyTeachers = TimetableSlot::query()
-                ->where('academic_year', $academicYear)
-                ->where('class_id', '!=', $classId)
-                ->whereNotNull('teacher_id')
-                ->get(['day_of_week', 'period_number', 'teacher_id'])
-                ->groupBy(fn ($s) => $s->day_of_week.'|'.$s->period_number)
-                ->map(fn ($rows) => $rows->pluck('teacher_id')->all());
-
-            foreach ($cells as [$day, $period]) {
-                if ($queue === []) {
-                    break;
-                }
-
-                $key = $day.'|'.$period['period'];
-                $busy = $busyTeachers[$key] ?? [];
-                $placedThisCell = false;
-
-                foreach ($queue as $qi => $subject) {
-                    $candidates = $teachersBySubject->get($subject->id) ?? [];
-                    $teacherId = null;
-                    foreach ($candidates as $candidateId) {
-                        if (! in_array($candidateId, $busy, true)) {
-                            $teacherId = $candidateId;
-                            break;
-                        }
-                    }
-
-                    // Never place a period without an available teacher.
-                    if ($teacherId === null) {
-                        continue;
-                    }
-
-                    TimetableSlot::query()->create([
-                        'class_id' => $classId,
-                        'academic_year' => $academicYear,
-                        'day_of_week' => $day,
-                        'period_number' => $period['period'],
-                        'start_time' => $period['start'],
-                        'end_time' => $period['end'],
-                        'subject_id' => $subject->id,
-                        'teacher_id' => $teacherId,
-                        'room' => $room,
-                    ]);
-
-                    $busy[] = $teacherId;
-                    $busyTeachers[$key] = $busy;
-
-                    array_splice($queue, $qi, 1);
-                    $placed++;
-                    $placedThisCell = true;
-                    break;
-                }
-
-                if (! $placedThisCell) {
-                    $skipped++;
-                }
-            }
-
-            $skipped += count($queue);
-        });
-
-        $message = "Timetable generated for {$class->displayName()} ({$placed} periods).";
-        if ($skipped > 0) {
-            $message .= " {$skipped} period(s) could not be placed due to teacher conflicts.";
+        $message = "Timetable generated for {$result['classes']} class(es) ({$result['placed']} periods).";
+        if ($result['skipped'] > 0) {
+            $message .= " {$result['skipped']} period(s) could not be placed (teacher schedule or conflicts).";
         }
 
+        $redirectClass = $request->integer('class_id') ?: null;
+
         return redirect()
-            ->route('timetable.index', ['class' => $classId])
+            ->route('timetable.index', array_filter(['class' => $redirectClass]))
             ->with('status', $message);
     }
 
@@ -525,9 +489,11 @@ class TimetableController extends Controller
             'teachers' => $teachers,
             'teachersBySubject' => $teachersBySubject,
             'subjectColors' => SchoolWeek::subjectColors(),
-            'defaultWeeklyPeriods' => SchoolWeek::defaultWeeklyPeriods(),
+            'defaultWeeklyPeriods' => SchoolWeek::weeklyPeriods(),
             'weeklyCapacity' => SchoolWeek::weeklyCapacity(),
             'periodCount' => SchoolWeek::periodCount(),
+            'periodsPerDay' => SchoolWeek::periodsPerDay(),
+            'moveHints' => $class ? TimetableMoveHints::forClass($class, $academicYear) : [],
         ]);
     }
 
@@ -673,46 +639,45 @@ class TimetableController extends Controller
         int $teacherId,
         int $classId,
     ): void {
-        if ($this->teacherIsBusy($academicYear, $day, $periodNumber, $teacherId, $classId)) {
+        $conflict = $this->teacherConflictSlot($academicYear, $day, $periodNumber, $teacherId, $classId);
+        if ($conflict) {
             throw ValidationException::withMessages([
-                'teacher_id' => 'This teacher is already booked for that day and period in another class.',
+                'teacher_id' => $this->teacherConflictMessage($conflict),
             ]);
         }
     }
 
-    private function teacherIsBusy(
+    private function teacherConflictSlot(
         string $academicYear,
         string $day,
         int $periodNumber,
         int $teacherId,
         int $classId,
-    ): bool {
+    ): ?TimetableSlot {
         return TimetableSlot::query()
+            ->with(['schoolClass', 'teacher', 'subject'])
             ->where('academic_year', $academicYear)
             ->where('day_of_week', $day)
             ->where('period_number', $periodNumber)
             ->where('teacher_id', $teacherId)
             ->where('class_id', '!=', $classId)
-            ->exists();
+            ->first();
     }
 
-    /**
-     * Deterministic Fisher–Yates shuffle (unique shape per class, stable across runs).
-     *
-     * @param  list<mixed>  $items
-     */
-    private function seededShuffle(array &$items, int $seed): void
+    private function teacherConflictMessage(TimetableSlot $conflict): string
     {
-        $n = count($items);
-        if ($n < 2) {
-            return;
+        $teacher = $conflict->teacher?->full_name ?? 'That teacher';
+        $class = $conflict->schoolClass?->displayName() ?? 'another class';
+        $day = SchoolWeek::dayLabel($conflict->day_of_week);
+        $period = 'P'.$conflict->period_number;
+        $subject = $conflict->subject?->name;
+
+        $where = "{$class} ({$day} {$period})";
+        if ($subject) {
+            $where .= " — {$subject}";
         }
 
-        $state = $seed > 0 ? $seed : 1;
-        for ($i = $n - 1; $i > 0; $i--) {
-            $state = ($state * 1103515245 + 12345) & 0x7FFFFFFF;
-            $j = $state % ($i + 1);
-            [$items[$i], $items[$j]] = [$items[$j], $items[$i]];
-        }
+        return "{$teacher} is already in {$where}.";
     }
+
 }

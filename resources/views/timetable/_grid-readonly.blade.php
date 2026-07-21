@@ -19,10 +19,13 @@
                     @foreach ($days as $day)
                         @php
                             $slot = $grid[$period['period']][$day] ?? null;
+                            $dayActive = \App\Support\SchoolWeek::dayHasPeriod($day, $period['period']);
                             $isMine = $slot && isset($highlightTeacherId) && (int) $slot->teacher_id === (int) $highlightTeacherId;
                         @endphp
-                        <td class="px-2 py-2 align-top">
-                            @if ($slot)
+                        <td class="px-2 py-2 align-top {{ $dayActive ? '' : 'bg-slate-50/80' }}">
+                            @if (! $dayActive)
+                                <div class="flex min-h-[56px] items-center justify-center rounded-md text-[10px] font-medium text-slate-300">—</div>
+                            @elseif ($slot)
                                 @php
                                     $color = $subjectColors[$slot->subject?->name] ?? 'bg-slate-50 border-slate-200 text-slate-900';
                                 @endphp

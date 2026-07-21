@@ -160,6 +160,7 @@ class DocumentsNotificationsTest extends TestCase
             'subject_id' => $subject->id,
             'term' => AcademicTerm::Term1,
             'academic_year' => $year,
+            'score_marks' => 18.3,
             'score_percent' => 91.5,
             'letter_grade' => LetterGrade::A,
             'entered_by' => $admin->id,
@@ -177,9 +178,24 @@ class DocumentsNotificationsTest extends TestCase
             ->assertJsonPath('ok', true)
             ->assertJsonPath('student.name', 'Doc Student')
             ->assertJsonPath('rows.0.subject', 'Mathematics')
-            ->assertJsonPath('rows.0.score', 91.5)
+            ->assertJsonPath('rows.0.marks', 18.3)
+            ->assertJsonPath('rows.0.percent', 91.5)
             ->assertJsonPath('rows.0.letter', 'A')
             ->assertJsonPath('rows.0.remarks', 'Excellent');
+
+        $this->actingAs($admin)
+            ->getJson(route('documents.preview', [
+                'document_type' => DocumentType::ReportCard->value,
+                'student_id' => $student->id,
+                'class_id' => $class->id,
+                'term' => 'all',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('all_terms', true)
+            ->assertJsonPath('term', 'All Terms')
+            ->assertJsonPath('rows.0.subject', 'Mathematics')
+            ->assertJsonPath('rows.0.term_scores.Term 1', 18.3);
     }
 
     public function test_finance_cannot_preview_or_store_academic_documents(): void
@@ -211,7 +227,6 @@ class DocumentsNotificationsTest extends TestCase
                 $values = collect($types)->map(fn ($t) => $t->value)->all();
 
                 return $values === [
-                    DocumentType::FeeReceipt->value,
                     DocumentType::StudentIdCard->value,
                 ];
             });
@@ -315,6 +330,27 @@ class DocumentsNotificationsTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('documents.store'), [
+                'document_type' => DocumentType::ReportCard->value,
+                'student_id' => $student->id,
+                'class_id' => $class->id,
+                'term' => 'all',
+            ])
+            ->assertRedirect();
+
+        $allTermsDoc = DocumentLog::query()->latest('id')->firstOrFail();
+        $this->assertSame('all', $allTermsDoc->term);
+
+        $this->actingAs($admin)
+            ->get(route('documents.print', $allTermsDoc))
+            ->assertOk()
+            ->assertSee('All Terms')
+            ->assertSee('Term 1')
+            ->assertSee('Term 2')
+            ->assertSee('Term 3')
+            ->assertSee('Final Exam');
+
+        $this->actingAs($admin)
+            ->post(route('documents.store'), [
                 'document_type' => DocumentType::CertificateCompletion->value,
                 'student_id' => $form4Student->id,
                 'class_id' => $form4->id,
@@ -343,48 +379,22 @@ class DocumentsNotificationsTest extends TestCase
             ->assertSee('Family relocation');
     }
 
-    public function test_fee_receipt_document_from_payment(): void
+    public function test_fee_receipt_cannot_be_generated_from_documents(): void
     {
         ['finance' => $finance, 'class' => $class, 'student' => $student] = $this->seedBasics();
-
-        $invoice = Invoice::query()->create([
-            'invoice_number' => 'INV-2026-07-0001',
-            'student_id' => $student->id,
-            'class_id' => $class->id,
-            'academic_year' => AcademicYear::current(),
-            'billing_month' => now()->startOfMonth()->toDateString(),
-            'base_amount' => 45,
-            'discount_applied' => 0,
-            'discount_reason' => null,
-            'amount_due' => 45,
-            'amount_paid' => 45,
-            'status' => InvoiceStatus::Paid,
-        ]);
-
-        $payment = Payment::query()->create([
-            'invoice_id' => $invoice->id,
-            'student_id' => $student->id,
-            'amount' => 45,
-            'method' => PaymentMethod::Cash,
-            'receipt_number' => 'RCP-20260716-0001',
-            'paid_at' => now(),
-            'recorded_by' => $finance->id,
-            'notes' => null,
-        ]);
 
         $this->actingAs($finance)
             ->post(route('documents.store'), [
                 'document_type' => DocumentType::FeeReceipt->value,
                 'student_id' => $student->id,
-                'payment_id' => $payment->id,
+                'class_id' => $class->id,
             ])
-            ->assertRedirect();
+            ->assertForbidden();
 
         $this->actingAs($finance)
-            ->get(route('documents.print', DocumentLog::query()->firstOrFail()))
+            ->get(route('documents.index'))
             ->assertOk()
-            ->assertSee('Fee Receipt')
-            ->assertSee('RCP-20260716-0001');
+            ->assertDontSee('Fee Receipt');
     }
 
     public function test_teacher_forbidden_from_documents_and_notifications(): void

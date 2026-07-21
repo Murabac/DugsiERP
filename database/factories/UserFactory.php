@@ -26,7 +26,7 @@ class UserFactory extends Factory
             'phone' => '+25263'.fake()->unique()->numerify('#######'),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
-            'role' => UserRole::Teacher,
+            'role' => UserRole::Teacher->value,
             'is_active' => true,
             'remember_token' => Str::random(10),
         ];
@@ -39,10 +39,10 @@ class UserFactory extends Factory
         ]);
     }
 
-    public function role(UserRole $role): static
+    public function role(UserRole|string $role): static
     {
         return $this->state(fn (array $attributes) => [
-            'role' => $role,
+            'role' => $role instanceof UserRole ? $role->value : $role,
         ]);
     }
 

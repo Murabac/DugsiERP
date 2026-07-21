@@ -177,15 +177,19 @@
         root.dataset.dateWired = '1';
     }
 
-    function wireAllDateSelects() {
-        document.querySelectorAll('[data-date-select]').forEach(wireDateSelect);
+    function wireAllDateSelects(root = document) {
+        (root?.querySelectorAll?.('[data-date-select]') || []).forEach(wireDateSelect);
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', wireAllDateSelects);
+        document.addEventListener('DOMContentLoaded', () => wireAllDateSelects());
     } else {
         wireAllDateSelects();
     }
+
+    window.addEventListener('dugsi:wire-date-selects', (event) => {
+        wireAllDateSelects(event.detail?.root || document);
+    });
 })();
 </script>
 @endonce

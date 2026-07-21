@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Enums\ClassStatus;
 use App\Enums\StaffStatus;
 use App\Enums\StudentStatus;
-use App\Enums\UserRole;
 use App\Models\Enrollment;
 use App\Models\Invoice;
 use App\Models\SchoolClass;
@@ -15,6 +14,7 @@ use App\Models\TimetableSlot;
 use App\Support\AcademicYear;
 use App\Support\Money;
 use App\Support\SchoolWeek;
+use App\Support\StaffAttendancePunch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -25,12 +25,50 @@ class DashboardController extends Controller
     {
         $user = $request->user();
         $year = AcademicYear::current();
+        $checkin = $this->staffCheckinTab($user);
 
-        return match ($user->role) {
-            UserRole::Finance => view('dashboard.finance', $this->financeData($user, $year)),
-            UserRole::Teacher => view('dashboard.teacher', $this->teacherData($user, $year)),
-            UserRole::Admin, UserRole::SuperAdmin => view('dashboard.admin', $this->adminData($user, $year)),
+        $kind = $user->dashboardKind();
+
+        $data = match ($kind) {
+            'finance' => $this->financeData($user, $year),
+            'teacher' => $this->teacherData($user, $year),
+            default => $this->adminData($user, $year),
         };
+
+        $view = match ($kind) {
+            'finance' => 'dashboard.finance',
+            'teacher' => 'dashboard.teacher',
+            default => 'dashboard.admin',
+        };
+
+        return view($view, array_merge($data, $checkin));
+    }
+
+    /**
+     * @return array{staffCheckinAction: ?string, staffCheckinUrl: ?string}
+     */
+    private function staffCheckinTab($user): array
+    {
+        $staff = $user->staff;
+        if (! $staff || blank($staff->checkin_token)) {
+            return [
+                'staffCheckinAction' => null,
+                'staffCheckinUrl' => null,
+            ];
+        }
+
+        $action = StaffAttendancePunch::nextAction($staff);
+        if ($action === 'done') {
+            return [
+                'staffCheckinAction' => 'done',
+                'staffCheckinUrl' => null,
+            ];
+        }
+
+        return [
+            'staffCheckinAction' => $action,
+            'staffCheckinUrl' => route('staff-checkin.mine'),
+        ];
     }
 
     /**
@@ -318,7 +356,7 @@ class DashboardController extends Controller
         Staff::query()->latest('id')->limit(5)->get()->each(function (Staff $s) use ($items) {
             $items->push([
                 'type' => 'staff',
-                'text' => 'Staff '.$s->full_name.' ('.$s->employee_code.') — '.$s->role_label->label(),
+                'text' => 'Staff '.$s->full_name.' ('.$s->employee_code.') — '.$s->roleDisplayName(),
                 'time' => optional($s->created_at)?->diffForHumans() ?? '',
                 'sort' => $s->created_at?->timestamp ?? 0,
             ]);

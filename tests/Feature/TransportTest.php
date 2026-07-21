@@ -254,7 +254,7 @@ class TransportTest extends TestCase
             ->assertSessionHasInput('capacity', '25');
 
         $driver = Staff::query()->where('full_name', 'New Bus Driver')->firstOrFail();
-        $this->assertSame(StaffRoleLabel::Driver, $driver->role_label);
+        $this->assertSame(StaffRoleLabel::Driver->value, $driver->role_label);
 
         $this->actingAs($admin)
             ->get(route('transport.buses.create'))

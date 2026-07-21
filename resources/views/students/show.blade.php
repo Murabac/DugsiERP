@@ -4,7 +4,7 @@
 
 @section('content')
 @php
-    $isFinanceOnly = auth()->user()?->isFinance() && ! auth()->user()?->isAdmin();
+    $isFinanceOnly = auth()->user()?->hasPermission('fees.view') && ! auth()->user()?->hasPermission('students.manage') && ! auth()->user()?->isAdmin();
     $profileTabs = $isFinanceOnly
         ? ['overview', 'guardians']
         : ['overview', 'guardians', 'attendance', 'grades'];
@@ -56,7 +56,7 @@
                     </div>
                     <div class="flex flex-shrink-0 flex-wrap items-center gap-2">
                         <x-status-badge :status="$student->status" />
-                        @if (auth()->user()?->isAdmin())
+                        @if (auth()->user()?->hasPermission('students.manage'))
                             <x-btn variant="secondary" size="sm" href="{{ route('students.edit', $student) }}">Edit</x-btn>
                         @endif
                     </div>
@@ -112,7 +112,8 @@
                                 ['Status', $student->status->label()],
                             ];
                             if ($canSeeFees ?? false) {
-                                $enrollmentRows[] = ['Need-based fee discount', $student->need_based_discount ? 'Yes' : 'No'];
+                                $amount = (float) ($student->need_based_discount_amount ?? 0);
+                                $enrollmentRows[] = ['Need-based fee discount', $amount > 0 ? \App\Support\Money::format($amount) : 'None'];
                             }
                         @endphp
                         @foreach ($enrollmentRows as [$k, $v])
@@ -121,12 +122,20 @@
                                 <span class="text-xs font-medium text-slate-800">{{ $v }}</span>
                             </div>
                         @endforeach
-                        @if (auth()->user()->isAdmin())
-                            <form method="POST" action="{{ route('students.need-based', $student) }}" class="mt-3">
+                        @if (auth()->user()->hasPermission('students.manage'))
+                            <form method="POST" action="{{ route('students.need-based', $student) }}" class="mt-3 flex flex-wrap items-end gap-2">
                                 @csrf
-                                <input type="hidden" name="need_based_discount" value="{{ $student->need_based_discount ? '0' : '1' }}">
-                                <button type="submit" class="text-xs font-medium text-blue-700 hover:underline">
-                                    {{ $student->need_based_discount ? 'Remove need-based discount' : 'Enable need-based discount' }}
+                                <div>
+                                    <label class="mb-1 block text-[11px] font-medium text-slate-500">Need-based discount (USD)</label>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-slate-400">$</span>
+                                        <input type="number" name="need_based_discount_amount" min="0" max="99999.99" step="0.01" required
+                                            value="{{ old('need_based_discount_amount', $student->need_based_discount_amount) }}"
+                                            class="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-dugsi-primary">
+                                    </div>
+                                </div>
+                                <button type="submit" class="rounded-md bg-dugsi-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#162d56]">
+                                    Save discount
                                 </button>
                             </form>
                         @endif
@@ -164,7 +173,7 @@
                             @endif
                         </div>
 
-                        @if (auth()->user()?->isAdmin())
+                        @if (auth()->user()?->hasPermission('students.manage'))
                             <details class="mt-3 border-t border-slate-200 pt-3">
                                 <summary class="cursor-pointer text-xs font-medium text-dugsi-primary">Edit guardian</summary>
                                 <form method="POST" action="{{ route('students.guardians.update', [$student, $guardian]) }}" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -207,7 +216,7 @@
                     </div>
                 @endforeach
 
-                @if (auth()->user()?->isAdmin())
+                @if (auth()->user()?->hasPermission('students.manage'))
                 <details class="rounded-lg border border-slate-200 bg-white p-3">
                     <summary class="cursor-pointer text-sm font-medium text-dugsi-primary">+ Add Guardian</summary>
                     <form method="POST" action="{{ route('students.guardians.store', $student) }}" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -303,7 +312,7 @@
                         <table class="w-full min-w-[480px] text-sm">
                             <thead>
                                 <tr class="border-b border-slate-100 bg-slate-50">
-                                    @foreach (['Subject', 'Score', 'Grade', 'Remarks'] as $h)
+                                    @foreach (['Subject', 'Score', '%', 'Grade', 'Remarks'] as $h)
                                         <th class="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{{ $h }}</th>
                                     @endforeach
                                 </tr>
@@ -312,6 +321,7 @@
                                 @foreach ($studentGrades as $grade)
                                     <tr class="border-b border-slate-50">
                                         <td class="px-3 py-2 font-medium text-slate-900">{{ $grade->subject?->name }}</td>
+                                        <td class="px-3 py-2">{{ $grade->score_marks !== null ? number_format((float) $grade->score_marks, 1) : number_format(\App\Support\TermMarks::marksFromPercent((float) $grade->score_percent, $gradeTerm), 1) }}</td>
                                         <td class="px-3 py-2">{{ number_format((float) $grade->score_percent, 1) }}%</td>
                                         <td class="px-3 py-2">
                                             <span class="inline-flex rounded px-1.5 py-0.5 text-xs font-bold {{ $grade->letter_grade->badgeClass() }}">{{ $grade->letter_grade->value }}</span>
@@ -378,7 +388,7 @@
                                                         {{ $payment->paid_at?->format('j M Y') }}
                                                         · {{ \App\Support\Money::format($payment->amount) }}
                                                         · {{ $payment->method->label() }}
-                                                        · @if (auth()->user()->isAdmin() || auth()->user()->hasRole(\App\Enums\UserRole::Finance))
+                                                        · @if (auth()->user()->hasPermission('fees.view'))
                                                             <a href="{{ route('finance.payments.receipt', $payment) }}" class="font-medium text-blue-700 hover:underline">{{ $payment->receipt_number }}</a>
                                                         @else
                                                             {{ $payment->receipt_number }}
@@ -398,7 +408,7 @@
             <div class="space-y-3">
                 <div class="flex items-center justify-between gap-2">
                     <p class="text-xs text-slate-500">Generated documents for this student.</p>
-                    @if (auth()->user()?->isAdmin())
+                    @if (auth()->user()?->hasPermission('students.manage'))
                         <a href="{{ route('documents.index', ['tab' => 'generate']) }}" class="text-xs font-medium text-blue-700 hover:underline">Generate new</a>
                     @endif
                 </div>
@@ -419,7 +429,7 @@
                                     <td class="px-3 py-2">{{ $doc->document_type->label() }}</td>
                                     <td class="px-3 py-2 text-slate-600">{{ $doc->generated_at?->format('j M Y') }}</td>
                                     <td class="px-3 py-2 text-right">
-                                        @if (auth()->user()?->isAdmin())
+                                        @if (auth()->user()?->hasPermission('students.manage'))
                                             <a href="{{ route('documents.print', $doc) }}" target="_blank" rel="noopener" class="text-xs font-medium text-blue-700 hover:underline">View</a>
                                         @endif
                                     </td>

@@ -20,12 +20,18 @@ class NotificationDispatcher
     /**
      * Send (or attempt) an absence alert for an attendance record.
      * Idempotent per attendance record (DB unique + check).
+     * Skipped when the Absence Alert template is missing or inactive.
      *
      * @return bool True when a new log row was created
      */
     public static function sendAbsenceAlert(Student $student, AttendanceRecord $record, ?string $phone): bool
     {
         return DB::transaction(function () use ($student, $record, $phone) {
+            $template = self::activeTemplate(NotificationType::AbsenceAlert);
+            if (! $template) {
+                return false;
+            }
+
             $alreadyLogged = NotificationLog::query()
                 ->where('related_attendance_id', $record->id)
                 ->where('type', NotificationType::AbsenceAlert)
@@ -40,11 +46,11 @@ class NotificationDispatcher
                 ?? $student->currentEnrollment?->schoolClass?->displayName()
                 ?? '—';
 
-            $body = self::render(NotificationType::AbsenceAlert, [
+            $body = $template->render([
                 'student_name' => $student->full_name,
                 'class' => $classLabel,
                 'date' => $record->date->format('j F Y'),
-            ], fallback: AbsenceSmsStub::messageBody($student->full_name, $record->date));
+            ]);
 
             try {
                 self::dispatch(
@@ -127,16 +133,21 @@ class NotificationDispatcher
      */
     public static function render(NotificationType $type, array $vars, ?string $fallback = null): string
     {
-        $template = NotificationTemplate::query()
-            ->where('type', $type)
-            ->where('is_active', true)
-            ->first();
+        $template = self::activeTemplate($type);
 
         if ($template) {
             return $template->render($vars);
         }
 
         return $fallback ?? '';
+    }
+
+    public static function activeTemplate(NotificationType $type): ?NotificationTemplate
+    {
+        return NotificationTemplate::query()
+            ->where('type', $type)
+            ->where('is_active', true)
+            ->first();
     }
 
     private static function recentFeeNotice(Invoice $invoice, NotificationType $type): ?NotificationLog

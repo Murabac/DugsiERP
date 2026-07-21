@@ -34,6 +34,7 @@ class AttendanceController extends Controller
         }
 
         $date = $this->resolveDateQuery($request->query('date'), now()->toDateString());
+        $isFuture = $date->gt(now()->startOfDay());
 
         $rows = collect();
         $existing = collect();
@@ -56,8 +57,7 @@ class AttendanceController extends Controller
                 $record = $existing->get($student->id);
                 $oldStatus = old('statuses.'.$student->id);
                 $status = $oldStatus
-                    ?? $record?->status?->value
-                    ?? AttendanceStatus::Present->value;
+                    ?? $record?->status?->value;
 
                 return [
                     'enrollment' => $enrollment,
@@ -77,10 +77,108 @@ class AttendanceController extends Controller
             'dateLabel' => $date->format('j F Y'),
             'rows' => $rows,
             'isSchoolDay' => $isSchoolDay,
+            'isFuture' => $isFuture,
+            'today' => now()->toDateString(),
             'alreadyMarked' => $existing->isNotEmpty(),
             'statuses' => AttendanceStatus::cases(),
             'academicYear' => $year,
+            'absenceSmsTemplate' => AbsenceSmsStub::templateBody()
+                ?? 'Dear parent, your child {student_name} ({class}) was absent on {date}. Please contact the school.',
+            'absenceSmsClass' => $schoolClass?->displayName() ?? '',
+            'absenceSmsDate' => $date->format('j F Y'),
+            'absenceSmsEnabled' => AbsenceSmsStub::templateIsActive(),
         ]);
+    }
+
+    public function weekSheet(Request $request): View
+    {
+        $user = $request->user();
+        $year = AcademicYear::current();
+        $classes = $this->accessibleClasses($user, $year);
+
+        $requestedClassId = (int) $request->query('class', 0);
+        if ($requestedClassId > 0) {
+            $schoolClass = $classes->firstWhere('id', $requestedClassId);
+            abort_unless($schoolClass !== null, 403);
+        } else {
+            $schoolClass = $classes->first();
+        }
+
+        $anchor = $this->resolveDateQuery($request->query('week', $request->query('date')), now()->toDateString());
+        $week = SchoolWeek::weekContaining($anchor);
+        $fill = $request->query('fill', 'empty') === 'marked' ? 'marked' : 'empty';
+
+        $dayDates = collect($week['days'])->map(fn (array $d) => $d['date']->toDateString())->all();
+        $marksByStudent = [];
+
+        $students = collect();
+        if ($schoolClass) {
+            $enrollments = $schoolClass->activeEnrollments()
+                ->with('student')
+                ->orderBy('roll_number')
+                ->get();
+
+            if ($fill === 'marked') {
+                $records = AttendanceRecord::query()
+                    ->where('class_id', $schoolClass->id)
+                    ->whereDate('date', '>=', $week['saturday']->toDateString())
+                    ->whereDate('date', '<=', $week['days'][4]['date']->toDateString())
+                    ->get();
+
+                foreach ($records as $record) {
+                    $dateKey = $record->date->toDateString();
+                    if (! in_array($dateKey, $dayDates, true)) {
+                        continue;
+                    }
+                    $marksByStudent[(int) $record->student_id][$dateKey] = $record->status;
+                }
+            }
+
+            $students = $enrollments->map(function (Enrollment $enrollment) use ($week, $fill, $marksByStudent) {
+                $studentId = (int) $enrollment->student_id;
+                $dayMarks = [];
+                foreach ($week['days'] as $day) {
+                    $dateKey = $day['date']->toDateString();
+                    $status = $fill === 'marked'
+                        ? ($marksByStudent[$studentId][$dateKey] ?? null)
+                        : null;
+                    $dayMarks[$day['key']] = [
+                        'status' => $status,
+                        'code' => $status?->markSymbol(),
+                    ];
+                }
+
+                return [
+                    'id' => $studentId,
+                    'roll' => str_pad((string) $enrollment->roll_number, 2, '0', STR_PAD_LEFT),
+                    'name' => $enrollment->student->full_name,
+                    'initials' => $enrollment->student->initials(),
+                    'days' => $dayMarks,
+                ];
+            });
+        }
+
+        $payload = [
+            'classes' => $classes,
+            'schoolClass' => $schoolClass,
+            'weekAnchor' => $anchor->toDateString(),
+            'weekStart' => $week['saturday']->toDateString(),
+            'weekLabel' => $week['saturday']->format('j M').' – '.$week['days'][4]['date']->format('j M Y'),
+            'days' => $week['days'],
+            'students' => $students,
+            'fill' => $fill,
+            'academicYear' => $year,
+            'schoolName' => \App\Models\SchoolSetting::schoolName(),
+            'schoolLetterheadSub' => \App\Models\SchoolSetting::schoolLetterheadSub(),
+        ];
+
+        if ($request->boolean('print')) {
+            abort_unless($schoolClass !== null, 404);
+
+            return view('attendance.week-sheet-print', $payload);
+        }
+
+        return view('attendance.week-sheet', $payload);
     }
 
     public function store(Request $request): RedirectResponse
@@ -90,7 +188,7 @@ class AttendanceController extends Controller
 
         $data = $request->validate([
             'class_id' => ['required', 'integer', 'exists:classes,id'],
-            'date' => ['required', 'date'],
+            'date' => ['required', 'date', 'before_or_equal:today'],
             'statuses' => ['required', 'array'],
             'statuses.*' => ['required', Rule::enum(AttendanceStatus::class)],
             'reasons' => ['nullable', 'array'],
@@ -150,7 +248,11 @@ class AttendanceController extends Controller
                 if ($sendSms && $status === AttendanceStatus::Absent) {
                     $student = $enrollments->get($studentId)->student;
                     $record->setRelation('schoolClass', $schoolClass);
-                    if (AbsenceSmsStub::log($student, $record, $student->primaryGuardian?->phone)) {
+                    if (\App\Support\NotificationDispatcher::sendAbsenceAlert(
+                        $student,
+                        $record,
+                        $student->primaryGuardian?->phone
+                    )) {
                         $smsCount++;
                     }
                 }
@@ -161,7 +263,9 @@ class AttendanceController extends Controller
         if ($sendSms && $smsCount > 0) {
             $message .= ' '.$smsCount.' absence SMS attempted via notification service.';
         } elseif ($sendSms && $smsCount === 0) {
-            $message .= ' No new absence SMS to send.';
+            $message .= AbsenceSmsStub::templateIsActive()
+                ? ' No new absence SMS to send.'
+                : ' Absence SMS skipped — Absence Alert template is inactive.';
         }
 
         return redirect()

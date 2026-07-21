@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="space-y-4">
-    <x-section-header title="Student Grade Report" :sub="'Per-student term report with class rank · headmasters & admins only · '.$academicYear">
+    <x-section-header title="Student Grade Report" :sub="'Per-student term report with class rank · Form Masters & admins · '.$academicYear">
         <x-slot:action>
             @if ($schoolClass && $student)
                 <x-btn variant="secondary" :href="route('grades.print', ['class' => $schoolClass->id, 'student' => $student->id, 'term' => $term->value])" target="_blank" rel="noopener">
@@ -17,9 +17,6 @@
 
     <div class="flex gap-1 border-b border-slate-200 text-sm">
         <a href="{{ route('grades.index', array_filter(['class' => $schoolClass?->id, 'term' => $term->value])) }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Entry</a>
-        @if (auth()->user()?->isAdmin())
-            <a href="{{ route('grades.boundaries') }}" class="px-3 py-2 text-slate-500 hover:text-slate-800">Grade Boundaries</a>
-        @endif
         <span class="border-b-2 border-dugsi-primary px-3 py-2 font-semibold text-dugsi-primary">Student Report</span>
     </div>
 
@@ -111,7 +108,7 @@
                     <table class="w-full min-w-[520px] text-sm">
                         <thead>
                             <tr class="bg-[#1e3a6e] text-white">
-                                @foreach (['Subject', 'Score', 'Grade', 'Remarks'] as $h)
+                                @foreach (['Subject', 'Score', '%', 'Grade', 'Remarks'] as $h)
                                     <th class="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider">{{ $h }}</th>
                                 @endforeach
                             </tr>
@@ -120,7 +117,8 @@
                             @foreach ($report['rows'] as $row)
                                 <tr class="border-b border-slate-50">
                                     <td class="px-4 py-2.5 font-medium text-slate-900">{{ $row['subject']->name }}</td>
-                                    <td class="px-4 py-2.5">{{ $row['score'] !== null ? number_format($row['score'], 1).'%' : '—' }}</td>
+                                    <td class="px-4 py-2.5">{{ $row['marks'] !== null ? number_format($row['marks'], 1) : '—' }}</td>
+                                    <td class="px-4 py-2.5">{{ $row['percent'] !== null ? number_format($row['percent'], 1).'%' : '—' }}</td>
                                     <td class="px-4 py-2.5">
                                         @if ($row['letter'])
                                             <span class="inline-flex rounded px-1.5 py-0.5 text-xs font-bold {{ $row['letter']->badgeClass() }}">{{ $row['letter']->value }}</span>
@@ -139,7 +137,8 @@
                     <div class="text-sm">
                         <span class="text-slate-500">Term Average:</span>
                         @if ($report['average'] !== null)
-                            <span class="ml-1 font-semibold text-slate-900">{{ number_format($report['average'], 1) }}%</span>
+                            <span class="ml-1 font-semibold text-slate-900">{{ number_format($report['average_marks'], 1) }}/{{ number_format($report['term_max'], $report['term_max'] == (int) $report['term_max'] ? 0 : 1) }}</span>
+                            <span class="ml-1 text-slate-500">({{ number_format($report['average'], 1) }}%)</span>
                             @if ($report['average_letter'])
                                 <span class="ml-1 inline-flex rounded px-1.5 py-0.5 text-xs font-bold {{ $report['average_letter']->badgeClass() }}">{{ $report['average_letter']->value }}</span>
                             @endif

@@ -11,11 +11,10 @@
         </x-slot:action>
     </x-section-header>
 
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <x-stat-card label="Active buses" :value="(string) $busCount" />
         <x-stat-card label="Riders" :value="(string) $riders" :sub="$riders.' / '.$seatsTotal.' seats'" />
         <x-stat-card label="Seats free" :value="(string) $seatsFree" />
-        <x-stat-card label="Transport billed" :value="\App\Support\Money::format($transportBilled)" :sub="$billingMonth" />
     </div>
 
     <p class="text-xs text-slate-500">

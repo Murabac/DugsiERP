@@ -168,7 +168,7 @@ class PayrollGenerator
                         'staff_id' => $staff->id,
                         'employee_code' => $staff->employee_code,
                         'full_name' => $staff->full_name,
-                        'role_label' => $staff->role_label?->label() ?? 'Staff',
+                        'role_label' => $staff->roleDisplayName(),
                         'salary_usd' => $salary,
                         'payslip_number' => DocumentNumbers::nextPayslipNumber($billingMonth->copy()),
                     ]);

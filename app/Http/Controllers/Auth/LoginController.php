@@ -51,7 +51,7 @@ class LoginController extends Controller
 
         $user->forceFill(['last_login_at' => now()])->save();
 
-        return redirect()->intended(route('dashboard'));
+        return redirect()->intended(route('modules.home'));
     }
 
     public function destroy(Request $request): RedirectResponse

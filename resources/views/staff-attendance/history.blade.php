@@ -6,7 +6,10 @@
 <div class="mx-auto max-w-3xl space-y-4">
     <x-section-header title="Staff attendance history" sub="Daily totals">
         <x-slot:action>
-            <x-btn variant="secondary" href="{{ route('staff-attendance.index') }}">Mark day</x-btn>
+            <x-btn variant="secondary" href="{{ route('staff-attendance.history.print', ['from' => $from, 'to' => $to]) }}">Print</x-btn>
+            @if (auth()->user()?->hasPermission('staff.manage'))
+                <x-btn variant="secondary" href="{{ route('staff-attendance.index') }}">Mark day</x-btn>
+            @endif
         </x-slot:action>
     </x-section-header>
 
@@ -45,7 +48,7 @@
                         <td class="px-3 py-2.5 text-red-700">{{ $day->absent_count }}</td>
                         <td class="px-3 py-2.5 text-slate-600">{{ $day->leave_count }}</td>
                         <td class="px-3 py-2.5 text-right">
-                            <a href="{{ route('staff-attendance.index', ['date' => $day->date]) }}" class="text-xs font-medium text-blue-700 hover:underline">Open</a>
+                            <a href="{{ route('staff-attendance.index', ['date' => $day->date]) }}" class="text-xs font-medium text-blue-700 hover:underline">View</a>
                         </td>
                     </tr>
                 @empty

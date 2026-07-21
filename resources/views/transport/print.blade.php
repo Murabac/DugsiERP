@@ -15,9 +15,10 @@
     </style>
 </head>
 <body>
-    <div class="no-print" style="margin-bottom: 12px;">
+    <div class="no-print" style="margin-bottom: 12px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <a href="{{ route('modules.home') }}">← Apps</a>
+        <a href="{{ route('transport.buses.show', $route) }}">← Back</a>
         <button onclick="window.print()">Print</button>
-        <a href="{{ route('transport.buses.show', $route) }}">Back</a>
     </div>
 
     <h1>{{ $schoolName }}</h1>
