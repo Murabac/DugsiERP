@@ -258,8 +258,21 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     Route::middleware('permission:reports.finance')->group(function () {
-        Route::get('/reports/fees', [ReportController::class, 'fees'])->name('reports.fees');
-        Route::get('/reports/fees/print', [ReportController::class, 'fees'])->name('reports.fees.print');
+        Route::get('/reports/fees', [ReportController::class, 'feesIndex'])->name('reports.fees');
+        Route::get('/reports/fees/collection', [ReportController::class, 'feesCollection'])->name('reports.fees.collection');
+        Route::get('/reports/fees/collection/print', [ReportController::class, 'feesCollection'])->name('reports.fees.collection.print');
+        Route::get('/reports/fees/print', fn () => redirect()->route('reports.fees.collection.print', request()->query()))
+            ->name('reports.fees.print');
+        Route::get('/reports/fees/students-by-form', [ReportController::class, 'feesStudentsByForm'])->name('reports.fees.students-by-form');
+        Route::get('/reports/fees/students-by-form/print', [ReportController::class, 'feesStudentsByForm'])->name('reports.fees.students-by-form.print');
+        Route::get('/reports/fees/income', [ReportController::class, 'feesIncome'])->name('reports.fees.income');
+        Route::get('/reports/fees/income/print', [ReportController::class, 'feesIncome'])->name('reports.fees.income.print');
+        Route::get('/reports/fees/expenses', [ReportController::class, 'feesExpenses'])->name('reports.fees.expenses');
+        Route::get('/reports/fees/expenses/print', [ReportController::class, 'feesExpenses'])->name('reports.fees.expenses.print');
+        Route::get('/reports/fees/net-income', [ReportController::class, 'feesNetIncome'])->name('reports.fees.net-income');
+        Route::get('/reports/fees/net-income/print', [ReportController::class, 'feesNetIncome'])->name('reports.fees.net-income.print');
+        Route::get('/reports/fees/monthly-close', [ReportController::class, 'feesMonthlyClose'])->name('reports.fees.monthly-close');
+        Route::get('/reports/fees/monthly-close/print', [ReportController::class, 'feesMonthlyClose'])->name('reports.fees.monthly-close.print');
         Route::get('/reports/payroll', [ReportController::class, 'payroll'])->name('reports.payroll');
         Route::get('/reports/payroll/print', [ReportController::class, 'payroll'])->name('reports.payroll.print');
     });

@@ -1,7 +1,7 @@
 @extends('layouts.print', ['printOrientation' => 'A4 portrait'])
 
 @section('title', 'Fee Collection Report')
-@section('back_url', route('reports.fees', request()->query()))
+@section('back_url', route('reports.fees.collection', request()->query()))
 @section('doc_pill', 'Fee Collection Report')
 @section('meta')
     {{ \Illuminate\Support\Carbon::parse($from)->format('M Y') }} – {{ \Illuminate\Support\Carbon::parse($to)->format('M Y') }}

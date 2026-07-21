@@ -17,13 +17,20 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Support\AcademicYear;
 use App\Support\FeeCollectionReport;
+use App\Support\FeeExpensesReport;
+use App\Support\FeeIncomeReport;
+use App\Support\FeeMonthlyCloseReport;
+use App\Support\FeeNetIncomeReport;
+use App\Support\FeeStudentsByFormReport;
 use App\Support\GradeScale;
 use App\Support\Money;
 use App\Support\PayrollGenerator;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class ReportController extends Controller
 {
@@ -351,14 +358,70 @@ class ReportController extends Controller
         return $requireSelection ? [] : [AcademicTerm::Term2];
     }
 
-    public function fees(Request $request): View|StreamedResponse
+    public function feesIndex(Request $request): View|RedirectResponse
+    {
+        // Legacy bookmarks: old /reports/fees was the collection report (filters + CSV).
+        if ($request->filled('export') || $request->filled('class') || $request->has('from') || $request->has('to')) {
+            return redirect()->route('reports.fees.collection', $request->query());
+        }
+
+        return view('reports.fees.index', [
+            'academicYear' => AcademicYear::current(),
+            'cards' => [
+                [
+                    'title' => 'Monthly accounting close',
+                    'description' => 'Xisaab-xidhka bil\'le — all fee sections in one report',
+                    'icon' => 'file-text',
+                    'route' => 'reports.fees.monthly-close',
+                    'tone' => 'border-indigo-200 bg-indigo-50',
+                ],
+                [
+                    'title' => 'Fee collection',
+                    'description' => 'Collected vs outstanding by month',
+                    'icon' => 'dollar-sign',
+                    'route' => 'reports.fees.collection',
+                    'tone' => 'border-emerald-200 bg-emerald-50',
+                ],
+                [
+                    'title' => 'Students by form (paid / unpaid)',
+                    'description' => 'Tirada ardayda fasal kasta — all sections combined',
+                    'icon' => 'users',
+                    'route' => 'reports.fees.students-by-form',
+                    'tone' => 'border-blue-200 bg-blue-50',
+                ],
+                [
+                    'title' => 'Income report',
+                    'description' => 'Fahfaahinta dakhliga — secondary Forms 1–4',
+                    'icon' => 'bar-chart',
+                    'route' => 'reports.fees.income',
+                    'tone' => 'border-teal-200 bg-teal-50',
+                ],
+                [
+                    'title' => 'Expense report',
+                    'description' => 'Fahfaahinta kharashaadka — payroll + expenses',
+                    'icon' => 'credit-card',
+                    'route' => 'reports.fees.expenses',
+                    'tone' => 'border-amber-200 bg-amber-50',
+                ],
+                [
+                    'title' => 'Net income',
+                    'description' => 'Dakhliga ah — income minus expenses',
+                    'icon' => 'layers',
+                    'route' => 'reports.fees.net-income',
+                    'tone' => 'border-violet-200 bg-violet-50',
+                ],
+            ],
+        ]);
+    }
+
+    public function feesCollection(Request $request): View|StreamedResponse
     {
         $year = AcademicYear::current();
         $bounds = AcademicYear::feeMonthBounds();
         $classes = $this->activeClasses($year);
 
-        $from = $request->query('from', $bounds['min'].'-01');
-        $to = $request->query('to', now()->toDateString());
+        $from = $this->queryDate($request, 'from', $bounds['min'].'-01');
+        $to = $this->queryDate($request, 'to', now()->toDateString());
         $classId = (int) $request->query('class', 0);
 
         $fromYm = Carbon::parse($from)->format('Y-m');
@@ -397,8 +460,8 @@ class ReportController extends Controller
         if ($this->wantsPrint($request)) {
             return view('reports.print.fees', [
                 'academicYear' => $year,
-                'from' => Carbon::parse($from)->toDateString(),
-                'to' => Carbon::parse($to)->toDateString(),
+                'from' => $from,
+                'to' => $to,
                 'rows' => $rows,
                 'totalDue' => $totalDue,
                 'totalPaid' => $totalPaid,
@@ -410,8 +473,8 @@ class ReportController extends Controller
         return view('reports.fees', [
             'academicYear' => $year,
             'classes' => $classes,
-            'from' => Carbon::parse($from)->toDateString(),
-            'to' => Carbon::parse($to)->toDateString(),
+            'from' => $from,
+            'to' => $to,
             'classId' => $classId,
             'rows' => $rows,
             'totalDue' => $totalDue,
@@ -420,6 +483,182 @@ class ReportController extends Controller
             'rate' => $rate,
             'chart' => $chart,
         ]);
+    }
+
+    public function feesStudentsByForm(Request $request): View
+    {
+        $year = AcademicYear::current();
+        $ctx = $this->feeReportMonthContext($request);
+        $report = FeeStudentsByFormReport::rows($year, $ctx['month'], $ctx['lang']);
+        $labels = FeeStudentsByFormReport::labels()[$ctx['lang']];
+
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.fees.students-by-form', [
+                'academicYear' => $year,
+                'month' => $ctx['month'],
+                'lang' => $ctx['lang'],
+                'labels' => $labels,
+                'rows' => $report['rows'],
+                'totals' => $report['totals'],
+                'summary' => $report['summary'],
+            ]);
+        }
+
+        return view('reports.fees.students-by-form', [
+            'academicYear' => $year,
+            'month' => $ctx['month'],
+            'monthOptions' => $ctx['monthOptions'],
+            'prevMonth' => $ctx['prevMonth'],
+            'nextMonth' => $ctx['nextMonth'],
+            'lang' => $ctx['lang'],
+            'labels' => $labels,
+            'rows' => $report['rows'],
+            'totals' => $report['totals'],
+            'summary' => $report['summary'],
+        ]);
+    }
+
+    public function feesIncome(Request $request): View
+    {
+        $year = AcademicYear::current();
+        $ctx = $this->feeReportMonthContext($request);
+        $report = FeeIncomeReport::rows($year, $ctx['month'], $ctx['lang']);
+        $labels = FeeIncomeReport::labels()[$ctx['lang']];
+
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.fees.income', [
+                'academicYear' => $year,
+                'month' => $ctx['month'],
+                'lang' => $ctx['lang'],
+                'labels' => $labels,
+                'lines' => $report['lines'],
+                'total' => $report['total'],
+            ]);
+        }
+
+        return view('reports.fees.income', [
+            'academicYear' => $year,
+            'month' => $ctx['month'],
+            'monthOptions' => $ctx['monthOptions'],
+            'prevMonth' => $ctx['prevMonth'],
+            'nextMonth' => $ctx['nextMonth'],
+            'lang' => $ctx['lang'],
+            'labels' => $labels,
+            'lines' => $report['lines'],
+            'total' => $report['total'],
+        ]);
+    }
+
+    public function feesExpenses(Request $request): View
+    {
+        $year = AcademicYear::current();
+        $ctx = $this->feeReportMonthContext($request);
+        $report = FeeExpensesReport::rows($ctx['month'], $ctx['lang']);
+        $labels = FeeExpensesReport::labels()[$ctx['lang']];
+
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.fees.expenses', [
+                'academicYear' => $year,
+                'month' => $ctx['month'],
+                'lang' => $ctx['lang'],
+                'labels' => $labels,
+                'lines' => $report['lines'],
+                'total' => $report['total'],
+            ]);
+        }
+
+        return view('reports.fees.expenses', [
+            'academicYear' => $year,
+            'month' => $ctx['month'],
+            'monthOptions' => $ctx['monthOptions'],
+            'prevMonth' => $ctx['prevMonth'],
+            'nextMonth' => $ctx['nextMonth'],
+            'lang' => $ctx['lang'],
+            'labels' => $labels,
+            'lines' => $report['lines'],
+            'total' => $report['total'],
+        ]);
+    }
+
+    public function feesNetIncome(Request $request): View
+    {
+        $year = AcademicYear::current();
+        $ctx = $this->feeReportMonthContext($request);
+        $report = FeeNetIncomeReport::build($year, $ctx['month'], $ctx['lang']);
+        $labels = FeeNetIncomeReport::labels()[$ctx['lang']];
+
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.fees.net-income', [
+                'academicYear' => $year,
+                'month' => $ctx['month'],
+                'lang' => $ctx['lang'],
+                'labels' => $labels,
+                'incomeLines' => $report['income']['lines'],
+                'incomeTotal' => $report['income']['total'],
+                'expenseLines' => $report['expenses']['lines'],
+                'expenseTotal' => $report['expenses']['total'],
+                'net' => $report['net'],
+            ]);
+        }
+
+        return view('reports.fees.net-income', [
+            'academicYear' => $year,
+            'month' => $ctx['month'],
+            'monthOptions' => $ctx['monthOptions'],
+            'prevMonth' => $ctx['prevMonth'],
+            'nextMonth' => $ctx['nextMonth'],
+            'lang' => $ctx['lang'],
+            'labels' => $labels,
+            'incomeLines' => $report['income']['lines'],
+            'incomeTotal' => $report['income']['total'],
+            'expenseLines' => $report['expenses']['lines'],
+            'expenseTotal' => $report['expenses']['total'],
+            'net' => $report['net'],
+        ]);
+    }
+
+    public function feesMonthlyClose(Request $request): View
+    {
+        $year = AcademicYear::current();
+        $ctx = $this->feeReportMonthContext($request);
+        $report = FeeMonthlyCloseReport::build($year, $ctx['month'], $ctx['lang']);
+        $labels = FeeMonthlyCloseReport::labels()[$ctx['lang']];
+        $viewData = $this->monthlyCloseViewData($year, $ctx, $report, $labels);
+
+        if ($this->wantsPrint($request)) {
+            return view('reports.print.fees.monthly-close', $viewData);
+        }
+
+        return view('reports.fees.monthly-close', $viewData);
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     * @param  array<string, mixed>  $report
+     * @param  array<string, string>  $labels
+     * @return array<string, mixed>
+     */
+    private function monthlyCloseViewData(string $year, array $ctx, array $report, array $labels): array
+    {
+        return [
+            'academicYear' => $year,
+            'month' => $ctx['month'],
+            'monthOptions' => $ctx['monthOptions'],
+            'prevMonth' => $ctx['prevMonth'],
+            'nextMonth' => $ctx['nextMonth'],
+            'lang' => $ctx['lang'],
+            'labels' => $labels,
+            'studentRows' => $report['students']['rows'],
+            'studentTotals' => $report['students']['totals'],
+            'incomeLines' => $report['income']['lines'],
+            'incomeTotal' => $report['income']['total'],
+            'expenseLines' => $report['expenses']['lines'],
+            'expenseTotal' => $report['expenses']['total'],
+            'net' => $report['net'],
+            'unpaidRows' => $report['unpaid_rows'],
+            'unpaidTotals' => $report['unpaid_totals'],
+            'overview' => $report['overview'],
+        ];
     }
 
     public function payroll(Request $request): View
@@ -605,6 +844,82 @@ class ReportController extends Controller
         return $request->routeIs('*.print') || $request->boolean('print');
     }
 
+    private function queryDate(Request $request, string $key, string $fallback): string
+    {
+        $raw = $request->query($key);
+        if (! is_string($raw) || trim($raw) === '') {
+            return $fallback;
+        }
+
+        try {
+            return Carbon::parse($raw)->toDateString();
+        } catch (Throwable) {
+            return $fallback;
+        }
+    }
+
+    /**
+     * Shared month + language context for fee sub-reports.
+     *
+     * @return array{
+     *     lang: string,
+     *     month: string,
+     *     monthOptions: list<array{value: string, label: string}>,
+     *     prevMonth: ?string,
+     *     nextMonth: ?string
+     * }
+     */
+    private function feeReportMonthContext(Request $request): array
+    {
+        $lang = $request->query('lang', 'so') === 'en' ? 'en' : 'so';
+        $bounds = AcademicYear::feeMonthBounds();
+        $month = (string) $request->query('month', '');
+        if (preg_match('/^\d{4}-\d{2}$/', $month) !== 1) {
+            $legacyFrom = $request->query('from');
+            if (is_string($legacyFrom) && trim($legacyFrom) !== '') {
+                try {
+                    $month = Carbon::parse($legacyFrom)->format('Y-m');
+                } catch (Throwable) {
+                    $month = now()->format('Y-m');
+                }
+            } else {
+                $month = now()->format('Y-m');
+            }
+        }
+        if (preg_match('/^\d{4}-\d{2}$/', $month) !== 1) {
+            $month = now()->format('Y-m');
+        }
+        if ($month < $bounds['min']) {
+            $month = $bounds['min'];
+        }
+        if ($month > $bounds['max']) {
+            $month = $bounds['max'];
+        }
+
+        $monthOptions = [];
+        $cursor = Carbon::createFromFormat('!Y-m', $bounds['min'])->startOfMonth();
+        $end = Carbon::createFromFormat('!Y-m', $bounds['max'])->startOfMonth();
+        while ($cursor->lte($end)) {
+            $monthOptions[] = [
+                'value' => $cursor->format('Y-m'),
+                'label' => $cursor->translatedFormat('F Y'),
+            ];
+            $cursor->addMonth();
+        }
+
+        $current = Carbon::createFromFormat('!Y-m', $month)->startOfMonth();
+        $prevMonth = $current->copy()->subMonth()->format('Y-m');
+        $nextMonth = $current->copy()->addMonth()->format('Y-m');
+
+        return [
+            'lang' => $lang,
+            'month' => $month,
+            'monthOptions' => $monthOptions,
+            'prevMonth' => $prevMonth < $bounds['min'] ? null : $prevMonth,
+            'nextMonth' => $nextMonth > $bounds['max'] ? null : $nextMonth,
+        ];
+    }
+
     /**
      * @return \Illuminate\Support\Collection<int, SchoolClass>
      */
@@ -644,8 +959,8 @@ class ReportController extends Controller
             ],
             [
                 'key' => 'fees',
-                'title' => 'Fee Collection Report',
-                'description' => 'Collected vs. outstanding by month',
+                'title' => 'Fee Reports',
+                'description' => 'Collection by month and students paid/unpaid by form',
                 'icon' => 'dollar-sign',
                 'route' => 'reports.fees',
                 'tone' => 'border-emerald-200 bg-emerald-50',

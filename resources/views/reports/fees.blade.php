@@ -6,19 +6,20 @@
 <div class="space-y-4">
     <x-breadcrumb :items="[
         ['label' => 'Reports', 'url' => route('reports.index')],
+        ['label' => 'Fee Reports', 'url' => route('reports.fees')],
         ['label' => 'Fee Collection Report'],
     ]" />
 
     <x-section-header title="Fee Collection Report" :sub="'Collected vs outstanding by month · AY '.$academicYear">
         <x-slot:action>
-            <x-btn variant="secondary" :href="route('reports.fees.print', request()->query())" target="_blank">Print</x-btn>
-            <x-btn variant="secondary" href="{{ route('reports.fees', array_filter(['from' => $from, 'to' => $to, 'class' => $classId, 'export' => 'csv'])) }}">
+            <x-btn variant="secondary" :href="route('reports.fees.collection.print', request()->query())" target="_blank">Print</x-btn>
+            <x-btn variant="secondary" href="{{ route('reports.fees.collection', array_filter(['from' => $from, 'to' => $to, 'class' => $classId, 'export' => 'csv'])) }}">
                 <x-icon name="download" :size="14" /> Export CSV
             </x-btn>
         </x-slot:action>
     </x-section-header>
 
-    <form method="GET" action="{{ route('reports.fees') }}" class="rounded-lg border border-slate-200 bg-white p-4">
+    <form method="GET" action="{{ route('reports.fees.collection') }}" class="rounded-lg border border-slate-200 bg-white p-4">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <x-field label="From" name="from" type="date" :value="$from" />
             <x-field label="To" name="to" type="date" :value="$to" />

@@ -54,6 +54,7 @@ class DatabaseSeeder extends Seeder
         $this->seedFees();
         $this->seedTransport();
         $this->seedPayroll();
+        $this->call(JulyExpenseReportSampleSeeder::class);
         $this->seedNotificationTemplates();
     }
 

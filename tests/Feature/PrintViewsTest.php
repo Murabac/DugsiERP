@@ -125,10 +125,39 @@ class PrintViewsTest extends TestCase
             ->assertDontSee('Generate Report');
 
         $this->actingAs($admin)
-            ->get(route('reports.fees.print'))
+            ->get(route('reports.fees.collection.print'))
             ->assertOk()
             ->assertSee('Print / Save PDF')
             ->assertDontSee('Export CSV');
+
+        $this->actingAs($admin)
+            ->get(route('reports.fees.print'))
+            ->assertRedirect(route('reports.fees.collection.print'));
+
+        $this->actingAs($admin)
+            ->get(route('reports.fees.students-by-form.print'))
+            ->assertOk()
+            ->assertSee('Print / Save PDF');
+
+        $this->actingAs($admin)
+            ->get(route('reports.fees.income.print'))
+            ->assertOk()
+            ->assertSee('Print / Save PDF');
+
+        $this->actingAs($admin)
+            ->get(route('reports.fees.expenses.print'))
+            ->assertOk()
+            ->assertSee('Print / Save PDF');
+
+        $this->actingAs($admin)
+            ->get(route('reports.fees.net-income.print'))
+            ->assertOk()
+            ->assertSee('Print / Save PDF');
+
+        $this->actingAs($admin)
+            ->get(route('reports.fees.monthly-close.print'))
+            ->assertOk()
+            ->assertSee('Print / Save PDF');
 
         $this->actingAs($admin)
             ->get(route('reports.payroll.print'))
